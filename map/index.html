@@ -11,8 +11,9 @@ body{margin:0;font-family:sans-serif}
 #login{position:fixed;inset:0;background:#111;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:1000}
 #login input{padding:12px;width:240px;border-radius:8px;border:none;font-size:16px}
 #login button{padding:12px 24px;border-radius:8px;border:none;background:#e82127;color:#fff;font-size:16px}
-#bar{position:fixed;top:10px;right:10px;z-index:900;display:none}
-#bar button{padding:8px 14px;border-radius:8px;border:none;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+#bar{position:fixed;top:10px;left:10px;right:10px;z-index:900;display:none;gap:8px;align-items:center}
+#bar select{flex:1;padding:10px;border-radius:8px;border:none;font-size:15px;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+#bar button{padding:10px 14px;border-radius:8px;border:none;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3)}
 #msg{color:#f88;font-size:14px;min-height:18px}
 </style>
 </head>
@@ -24,7 +25,10 @@ body{margin:0;font-family:sans-serif}
 <button onclick="login()">로그인</button>
 <div id="msg"></div>
 </div>
-<div id="bar"><button onclick="load()">새로고침</button></div>
+<div id="bar">
+<select id="sel" onchange="render(this.value)"></select>
+<button onclick="load()">↻</button>
+</div>
 <div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -32,7 +36,7 @@ body{margin:0;font-family:sans-serif}
 const SB_URL="https://rzdjebtjlejjskvjrdec.supabase.co";
 const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6ZGplYnRqbGVqanNrdmpyZGVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MTA0NDUsImV4cCI6MjA5Njk4NjQ0NX0.Gsd-dNi0nXVKXPu4Ch3etZrc0Kf-WDaJA6bjlKVxdo4";
 const sb=supabase.createClient(SB_URL,SB_KEY);
-let map,layer;
+let map,layer,drives={};
 async function login(){
   const email=document.getElementById('email').value;
   const pw=document.getElementById('pw').value;
@@ -42,24 +46,43 @@ async function login(){
 }
 function start(){
   document.getElementById('login').style.display='none';
-  document.getElementById('bar').style.display='block';
+  document.getElementById('bar').style.display='flex';
   if(!map){map=L.map('map').setView([37.32,127.1],12);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'OSM'}).addTo(map);}
   load();
 }
+function lastTs(a){return new Date(a[a.length-1].ts).getTime();}
+function label(id,a){
+  let w=(id&&id.indexOf('drive-')===0)?new Date(parseInt(id.slice(6))):new Date(a[0].ts);
+  let s=w.toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+  let tag=(id&&id.indexOf('drive-')===0)?'':' (테스트)';
+  return s+tag+' · '+a.length+'개';
+}
 async function load(){
   const {data,error}=await sb.from('positions').select('*').order('ts',{ascending:true});
   if(error){alert('읽기 실패: '+error.message);return;}
+  drives={};
+  (data||[]).forEach(p=>{if(p.lat&&p.lng){(drives[p.drive_id]=drives[p.drive_id]||[]).push(p);}});
+  const ids=Object.keys(drives);
+  if(!ids.length){alert('데이터 없음');return;}
+  ids.sort((a,b)=>lastTs(drives[b])-lastTs(drives[a]));
+  const sel=document.getElementById('sel');
+  sel.innerHTML='';
+  ids.forEach(id=>{const o=document.createElement('option');o.value=id;o.text=label(id,drives[id]);sel.add(o);});
+  sel.value=ids[0];
+  render(ids[0]);
+}
+function render(id){
+  const a=drives[id];if(!a)return;
   if(layer)map.removeLayer(layer);
   layer=L.layerGroup().addTo(map);
-  const pts=(data||[]).filter(d=>d.lat&&d.lng).map(d=>[d.lat,d.lng]);
-  if(!pts.length){alert('데이터 없음');return;}
+  const pts=a.map(p=>[p.lat,p.lng]);
   L.polyline(pts,{color:'#e82127',weight:4}).addTo(layer);
-  data.forEach(d=>{
-    if(!d.lat||!d.lng)return;
-    const t=new Date(d.ts).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
-    L.circleMarker([d.lat,d.lng],{radius:5,color:'#e82127'}).bindPopup(t+'<br>'+(d.speed||0)+'km/h').addTo(layer);
+  a.forEach(p=>{
+    const t=new Date(p.ts).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
+    L.circleMarker([p.lat,p.lng],{radius:5,color:'#e82127'}).bindPopup(t+'<br>'+(p.speed||0)+'km/h').addTo(layer);
   });
+  if(pts.length>1)L.marker(pts[0]).bindPopup('출발').addTo(layer);
   map.fitBounds(pts);
 }
 sb.auth.getSession().then(({data})=>{if(data.session)start();});

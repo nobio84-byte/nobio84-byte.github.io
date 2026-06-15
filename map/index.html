@@ -121,8 +121,7 @@ function render(id){
   const pts=a.map(p=>[p.lat,p.lng]);
   const poly=L.polyline(pts,{color:'#1a73e8',weight:5}).addTo(layer);
   if(L.polylineDecorator){
-    L.polylineDecorator(poly,{patterns:[{offset:30,repeat:90,symbol:L.Symbol.arrowHead({pixelSize:16,polygon:false,pathOptions:{stroke:true,color:'#000000',weight:4,opacity:1}})}]}).addTo(layer);
-  }
+    L.polylineDecorator(poly,{patterns:[{offset:25,repeat:100,symbol:L.Symbol.arrowHead({pixelSize:20,headAngle:60,polygon:false,pathOptions:{stroke:true,color:'#111111',weight:5,opacity:1}})}]}).addTo(layer);  }
   a.forEach(p=>{
     const tm=new Date(p.ts).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
     L.circleMarker([p.lat,p.lng],{radius:4,color:'#1a73e8'}).bindPopup(tm+'<br>'+(p.speed||0)+'km/h').addTo(layer);

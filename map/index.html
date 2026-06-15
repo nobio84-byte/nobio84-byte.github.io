@@ -34,9 +34,9 @@ body{margin:0;font-family:sans-serif}
 </div>
 <div id="stats"></div>
 <div id="bar">
-<select id="sel" onchange="render(this.value)"></select>
+<select id="sel" onchange="selectTrip(this.value)"></select>
 <button id="live" onclick="toggleLive()">LIVE</button>
-<button onclick="load(true)">↻</button>
+<button onclick="loadList(true)">↻</button>
 </div>
 <div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -47,7 +47,7 @@ const SB_URL="https://rzdjebtjlejjskvjrdec.supabase.co";
 const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6ZGplYnRqbGVqanNrdmpyZGVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MTA0NDUsImV4cCI6MjA5Njk4NjQ0NX0.Gsd-dNi0nXVKXPu4Ch3etZrc0Kf-WDaJA6bjlKVxdo4";
 const MERGE_GAP_MIN=2;
 const sb=supabase.createClient(SB_URL,SB_KEY);
-let map,layer,tripMap={},tripOrder=[],live=false,liveTimer=null,geocache={};
+let map,layer,trips=[],curKey=null,live=false,liveTimer=null,geocache={};
 async function login(){
   const email=document.getElementById('email').value;
   const pw=document.getElementById('pw').value;
@@ -60,20 +60,21 @@ function start(){
   document.getElementById('bar').style.display='flex';
   document.getElementById('stats').style.display='block';
   if(!map){map=L.map('map').setView([37.32,127.1],12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'OSM'}).addTo(map);}
-  load(false);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:20,attribution:'© OpenStreetMap, © CARTO'}).addTo(map);}
+  loadList(false);
 }
 function toggleLive(){
   live=!live;
   const b=document.getElementById('live');
-  if(live){b.style.background='#e82127';b.style.color='#fff';b.textContent='● LIVE';load(false);liveTimer=setInterval(()=>load(false),30000);}
+  if(live){b.style.background='#e82127';b.style.color='#fff';b.textContent='● LIVE';loadList(false);liveTimer=setInterval(()=>loadList(false),30000);}
   else{b.style.background='#fff';b.style.color='#000';b.textContent='LIVE';clearInterval(liveTimer);}
 }
 function label(t){
   const w=new Date(t.start);
   const s=w.toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const tag=(t.key&&t.key.indexOf('drive-')===0)?'':' (테스트)';
   const merged=t.segs>1?(' · '+t.segs+'구간'):'';
-  return s+' · '+t.pts.length+'개'+merged;
+  return s+tag+' · '+t.points+'개'+merged;
 }
 function dist(a,b){
   const R=6371,r=x=>x*Math.PI/180;
@@ -91,34 +92,37 @@ async function placeName(lat,lng){
     geocache[key]=n;return n;
   }catch(e){return '?';}
 }
-async function load(keepSel){
-  const cur=document.getElementById('sel').value;
-  const {data,error}=await sb.from('positions').select('*').order('ts',{ascending:true});
-  if(error){if(!live)alert('읽기 실패: '+error.message);return;}
-  const raw={};
-  (data||[]).forEach(p=>{if(p.lat&&p.lng){(raw[p.drive_id]=raw[p.drive_id]||[]).push(p);}});
-  let segs=Object.keys(raw).map(id=>{const pts=raw[id];return{id,pts,start:new Date(pts[0].ts).getTime(),end:new Date(pts[pts.length-1].ts).getTime()};});
+async function loadList(keepSel){
+  const {data,error}=await sb.from('drive_list').select('*');
+  if(error){if(!live)alert('목록 읽기 실패: '+error.message);return;}
+  let segs=(data||[]).map(d=>({id:d.drive_id,start:new Date(d.start_ts).getTime(),end:new Date(d.end_ts).getTime(),points:d.points}));
   segs.sort((a,b)=>a.start-b.start);
-  const GAP=MERGE_GAP_MIN*60000,trips=[];
+  const GAP=MERGE_GAP_MIN*60000;trips=[];
   segs.forEach(s=>{const last=trips[trips.length-1];
-    if(last&&(s.start-last.end)<=GAP){last.pts=last.pts.concat(s.pts);last.end=s.end;last.segs++;}
-    else{trips.push({id:s.id,pts:s.pts.slice(),start:s.start,end:s.end,segs:1});}});
+    if(last&&(s.start-last.end)<=GAP){last.ids.push(s.id);last.end=s.end;last.points+=s.points;last.segs++;}
+    else{trips.push({ids:[s.id],start:s.start,end:s.end,points:s.points,segs:1});}});
   if(!trips.length){if(!live)alert('데이터 없음');return;}
   trips.sort((a,b)=>b.end-a.end);
-  tripMap={};tripOrder=[];
-  trips.forEach(t=>{tripMap[t.id]=t;tripOrder.push(t.id);});
+  trips.forEach(t=>t.key=t.ids[0]);
   const sel=document.getElementById('sel');
   sel.innerHTML='';
-  tripOrder.forEach(id=>{const o=document.createElement('option');o.value=id;o.text=label(tripMap[id]);sel.add(o);});
-  const pick=(keepSel&&tripMap[cur])?cur:tripOrder[0];
-  sel.value=pick;render(pick);
+  trips.forEach(t=>{const o=document.createElement('option');o.value=t.key;o.text=label(t);sel.add(o);});
+  let pick=(keepSel&&curKey&&trips.some(t=>t.key===curKey))?curKey:trips[0].key;
+  sel.value=pick;selectTrip(pick);
 }
-function render(id){
-  const t=tripMap[id];if(!t)return;
-  const a=t.pts;
+async function selectTrip(key){
+  curKey=key;
+  const t=trips.find(x=>x.key===key);if(!t)return;
+  const {data,error}=await sb.from('positions').select('*').in('drive_id',t.ids).order('ts',{ascending:true});
+  if(error){if(!live)alert('경로 읽기 실패: '+error.message);return;}
+  render(t,data||[]);
+}
+function render(t,a){
   if(layer)map.removeLayer(layer);
   layer=L.layerGroup().addTo(map);
+  a=a.filter(p=>p.lat&&p.lng);
   const pts=a.map(p=>[p.lat,p.lng]);
+  if(!pts.length)return;
   const poly=L.polyline(pts,{color:'#1a73e8',weight:5}).addTo(layer);
   if(L.polylineDecorator){
     L.polylineDecorator(poly,{patterns:[{offset:25,repeat:85,symbol:L.Symbol.arrowHead({pixelSize:11,polygon:true,pathOptions:{fill:true,fillColor:'#e82127',fillOpacity:1,color:'#e82127',weight:1}})}]}).addTo(layer);
@@ -127,18 +131,14 @@ function render(id){
     const tm=new Date(p.ts).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
     L.circleMarker([p.lat,p.lng],{radius:4,color:'#1a73e8'}).bindPopup(tm+'<br>'+(p.speed||0)+'km/h').addTo(layer);
   });
-  if(pts.length){
-    L.circleMarker(pts[0],{radius:9,color:'#1a7f37',fillColor:'#2ea043',fillOpacity:1}).bindPopup('🟢 출발').addTo(layer);
-    L.circleMarker(pts[pts.length-1],{radius:9,color:'#7a0d11',fillColor:'#e82127',fillOpacity:1}).bindPopup('🔴 도착').addTo(layer);
-  }
+  L.circleMarker(pts[0],{radius:9,color:'#1a7f37',fillColor:'#2ea043',fillOpacity:1}).bindPopup('🟢 출발').addTo(layer);
+  L.circleMarker(pts[pts.length-1],{radius:9,color:'#7a0d11',fillColor:'#e82127',fillOpacity:1}).bindPopup('🔴 도착').addTo(layer);
   let km=0;for(let i=1;i<a.length;i++)km+=dist(pts[i-1],pts[i]);
   const min=Math.max(0,Math.round((new Date(a[a.length-1].ts)-new Date(a[0].ts))/60000));
   const avg=min>0?Math.round(km/(min/60)):0;
   document.getElementById('stats').innerHTML='📏 '+km.toFixed(1)+'km · ⏱️ '+min+'분 · 🚗 평균 '+avg+'km/h<div id="place" style="margin-top:4px;color:#1a73e8">📍 …</div>';
-  if(pts.length){
-    Promise.all([placeName(pts[0][0],pts[0][1]),placeName(pts[pts.length-1][0],pts[pts.length-1][1])]).then(([s,e])=>{
-      const pl=document.getElementById('place');if(pl)pl.textContent='📍 '+s+' → '+e;});
-  }
+  Promise.all([placeName(pts[0][0],pts[0][1]),placeName(pts[pts.length-1][0],pts[pts.length-1][1])]).then(([s,e])=>{
+    const pl=document.getElementById('place');if(pl)pl.textContent='📍 '+s+' → '+e;});
   if(!live)map.fitBounds(pts);
 }
 sb.auth.getSession().then(({data})=>{if(data.session)start();});

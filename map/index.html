@@ -33,12 +33,15 @@ body{margin:0;font-family:sans-serif}
 </div>
 <div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const SB_URL="https://rzdjebtjlejjskvjrdec.supabase.co";
 const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6ZGplYnRqbGVqanNrdmpyZGVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MTA0NDUsImV4cCI6MjA5Njk4NjQ0NX0.Gsd-dNi0nXVKXPu4Ch3etZrc0Kf-WDaJA6bjlKVxdo4";
+// 이 분(分) 이내로 이어지는 주행은 하나로 합침. 합치는 정도 조절하려면 이 숫자만 바꾸세요.
+const MERGE_GAP_MIN=2;
 const sb=supabase.createClient(SB_URL,SB_KEY);
-let map,layer,drives={};
+let map,layer,tripMap={},tripOrder=[];
 async function login(){
   const email=document.getElementById('email').value;
   const pw=document.getElementById('pw').value;
@@ -54,12 +57,11 @@ function start(){
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'OSM'}).addTo(map);}
   load();
 }
-function lastTs(a){return new Date(a[a.length-1].ts).getTime();}
-function label(id,a){
-  let w=(id&&id.indexOf('drive-')===0)?new Date(parseInt(id.slice(6))):new Date(a[0].ts);
-  let s=w.toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
-  let tag=(id&&id.indexOf('drive-')===0)?'':' (테스트)';
-  return s+tag+' · '+a.length+'개';
+function label(t){
+  const w=new Date(t.start);
+  const s=w.toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const merged=t.segs>1?(' · '+t.segs+'구간'):'';
+  return s+' · '+t.pts.length+'개'+merged;
 }
 function dist(a,b){
   const R=6371,r=x=>x*Math.PI/180;
@@ -70,28 +72,44 @@ function dist(a,b){
 async function load(){
   const {data,error}=await sb.from('positions').select('*').order('ts',{ascending:true});
   if(error){alert('읽기 실패: '+error.message);return;}
-  drives={};
-  (data||[]).forEach(p=>{if(p.lat&&p.lng){(drives[p.drive_id]=drives[p.drive_id]||[]).push(p);}});
-  const ids=Object.keys(drives);
-  if(!ids.length){alert('데이터 없음');return;}
-  ids.sort((a,b)=>lastTs(drives[b])-lastTs(drives[a]));
+  const raw={};
+  (data||[]).forEach(p=>{if(p.lat&&p.lng){(raw[p.drive_id]=raw[p.drive_id]||[]).push(p);}});
+  let segs=Object.keys(raw).map(id=>{const pts=raw[id];return{id,pts,start:new Date(pts[0].ts).getTime(),end:new Date(pts[pts.length-1].ts).getTime()};});
+  segs.sort((a,b)=>a.start-b.start);
+  const GAP=MERGE_GAP_MIN*60000,trips=[];
+  segs.forEach(s=>{
+    const last=trips[trips.length-1];
+    if(last&&(s.start-last.end)<=GAP){last.pts=last.pts.concat(s.pts);last.end=s.end;last.segs++;}
+    else{trips.push({id:s.id,pts:s.pts.slice(),start:s.start,end:s.end,segs:1});}
+  });
+  if(!trips.length){alert('데이터 없음');return;}
+  trips.sort((a,b)=>b.end-a.end);
+  tripMap={};tripOrder=[];
+  trips.forEach(t=>{tripMap[t.id]=t;tripOrder.push(t.id);});
   const sel=document.getElementById('sel');
   sel.innerHTML='';
-  ids.forEach(id=>{const o=document.createElement('option');o.value=id;o.text=label(id,drives[id]);sel.add(o);});
-  sel.value=ids[0];
-  render(ids[0]);
+  tripOrder.forEach(id=>{const o=document.createElement('option');o.value=id;o.text=label(tripMap[id]);sel.add(o);});
+  sel.value=tripOrder[0];
+  render(tripOrder[0]);
 }
 function render(id){
-  const a=drives[id];if(!a)return;
+  const t=tripMap[id];if(!t)return;
+  const a=t.pts;
   if(layer)map.removeLayer(layer);
   layer=L.layerGroup().addTo(map);
   const pts=a.map(p=>[p.lat,p.lng]);
-  L.polyline(pts,{color:'#e82127',weight:4}).addTo(layer);
+  const poly=L.polyline(pts,{color:'#e82127',weight:4}).addTo(layer);
+  if(L.polylineDecorator){
+    L.polylineDecorator(poly,{patterns:[{offset:30,repeat:90,symbol:L.Symbol.arrowHead({pixelSize:12,polygon:true,pathOptions:{color:'#b3141a',fillOpacity:1,weight:0}})}]}).addTo(layer);
+  }
   a.forEach(p=>{
-    const t=new Date(p.ts).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
-    L.circleMarker([p.lat,p.lng],{radius:5,color:'#e82127'}).bindPopup(t+'<br>'+(p.speed||0)+'km/h').addTo(layer);
+    const tm=new Date(p.ts).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
+    L.circleMarker([p.lat,p.lng],{radius:4,color:'#e82127'}).bindPopup(tm+'<br>'+(p.speed||0)+'km/h').addTo(layer);
   });
-  if(pts.length>1)L.marker(pts[0]).bindPopup('출발').addTo(layer);
+  if(pts.length){
+    L.circleMarker(pts[0],{radius:9,color:'#1a7f37',fillColor:'#2ea043',fillOpacity:1}).bindPopup('🟢 출발').addTo(layer);
+    L.circleMarker(pts[pts.length-1],{radius:9,color:'#0a3069',fillColor:'#1f6feb',fillOpacity:1}).bindPopup('🔵 도착').addTo(layer);
+  }
   let km=0;for(let i=1;i<a.length;i++)km+=dist(pts[i-1],pts[i]);
   const min=Math.max(0,Math.round((new Date(a[a.length-1].ts)-new Date(a[0].ts))/60000));
   const avg=min>0?Math.round(km/(min/60)):0;

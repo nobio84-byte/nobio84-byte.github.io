@@ -60,7 +60,7 @@ function start(){
   document.getElementById('bar').style.display='flex';
   document.getElementById('stats').style.display='block';
   if(!map){map=L.map('map').setView([37.32,127.1],12);
-    L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap, HOT'}).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap, HOT'}).addTo(map);}
   loadList(false);
 }
 function toggleLive(){

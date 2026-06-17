@@ -42,8 +42,7 @@ body{margin:0;font-family:sans-serif}
 </div>
 <div id="stats"></div>
 <div id="cur"></div>
-<div id="legend">느림 <b style="color:#5e35b1">●</b><b style="color:#1e88e5">●</b><b style="color:#00acc1">●</b><b style="color:#7cb342">●</b><b style="color:#2e7d32">●</b> 빠름</div>
-<div id="bar">
+<div id="legend">느림 <b style="color:#e53935">●</b><b style="color:#fb8c00">●</b><b style="color:#fbc02d">●</b><b style="color:#7cb342">●</b><b style="color:#2e7d32">●</b> 빠름</div>
 <button id="dbtn" onclick="openDate()" title="날짜 필터">📅</button>
 <input id="dfilter" type="date" onchange="onDateChange()">
 <select id="sel" onchange="selectTrip(this.value)"></select>
@@ -66,9 +65,9 @@ let map,layer,trips=[],curKey=null,live=false,liveTimer=null,geocache={},monthSt
 function kmh(mph){return (mph==null)?null:Math.round(mph*MI2KM);}
 function speedColor(v){
   if(v==null)return '#1a73e8';
-  if(v<15)return '#5e35b1';
-  if(v<40)return '#1e88e5';
-  if(v<60)return '#00acc1';
+  if(v<20)return '#e53935';
+  if(v<40)return '#fb8c00';
+  if(v<60)return '#fbc02d';
   if(v<80)return '#7cb342';
   return '#2e7d32';
 }

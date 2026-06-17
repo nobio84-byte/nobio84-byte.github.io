@@ -22,8 +22,9 @@ body{margin:0;font-family:sans-serif}
 #legend{position:fixed;bottom:64px;left:10px;z-index:900;background:rgba(255,255,255,.92);padding:4px 9px;border-radius:6px;font-size:11px;display:none;box-shadow:0 1px 4px rgba(0,0,0,.3)}
 #legend b{font-size:14px;vertical-align:-1px}
 #bar{position:fixed;bottom:16px;left:10px;right:10px;z-index:900;display:none;gap:8px;align-items:center}
-#bar input[type=date]{flex:0 0 auto;width:138px;padding:9px 6px;border-radius:8px;border:none;font-size:13px;box-shadow:0 1px 4px rgba(0,0,0,.3)}
-#bar select{flex:1;min-width:70px;padding:10px;border-radius:8px;border:none;font-size:15px;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+#bar #dbtn{flex:0 0 auto;width:46px;padding:10px 0;font-size:17px}
+#bar #dfilter{position:absolute;left:10px;bottom:0;width:46px;height:40px;opacity:0;pointer-events:none;border:0;padding:0;margin:0}
+#bar select{flex:1;min-width:90px;padding:10px;border-radius:8px;border:none;font-size:15px;box-shadow:0 1px 4px rgba(0,0,0,.3)}
 #bar button{padding:10px 13px;border-radius:8px;border:none;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3);font-weight:bold}
 #msg{color:#f88;font-size:14px;min-height:18px}
 </style>
@@ -40,7 +41,8 @@ body{margin:0;font-family:sans-serif}
 <div id="stats"></div>
 <div id="legend">느림 <b style="color:#5e35b1">●</b><b style="color:#1e88e5">●</b><b style="color:#00acc1">●</b><b style="color:#7cb342">●</b><b style="color:#2e7d32">●</b> 빠름</div>
 <div id="bar">
-<input id="dfilter" type="date" onchange="loadList(false)">
+<button id="dbtn" onclick="openDate()" title="날짜 필터">📅</button>
+<input id="dfilter" type="date" onchange="onDateChange()">
 <select id="sel" onchange="selectTrip(this.value)"></select>
 <button id="live" onclick="toggleLive()">LIVE</button>
 <button onclick="loadList(true)">↻</button>
@@ -67,6 +69,18 @@ function speedColor(v){
   if(v<80)return '#7cb342';
   return '#2e7d32';
 }
+function openDate(){
+  const f=document.getElementById('dfilter');
+  if(f.value){f.value='';updateDateBtn();loadList(false);return;}
+  try{f.showPicker();}catch(e){try{f.focus();f.click();}catch(_){}}
+}
+function onDateChange(){updateDateBtn();loadList(false);}
+function updateDateBtn(){
+  const f=document.getElementById('dfilter');
+  const b=document.getElementById('dbtn');
+  if(f.value){b.style.background='#1a73e8';b.style.color='#fff';}
+  else{b.style.background='#fff';b.style.color='#000';}
+}
 async function login(){
   const email=document.getElementById('email').value;
   const pw=document.getElementById('pw').value;
@@ -79,14 +93,14 @@ function start(){
   document.getElementById('bar').style.display='flex';
   document.getElementById('stats').style.display='block';
   document.getElementById('legend').style.display='block';
-  if(!map){map=L.map('map').setView([37.32,127.1],12);
+  if(!map){map=L.map('map',{zoomControl:false}).setView([37.32,127.1],12);
     L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap, HOT'}).addTo(map);}
   loadList(false);
 }
 function toggleLive(){
   live=!live;
   const b=document.getElementById('live');
-  if(live){document.getElementById('dfilter').value='';b.style.background='#e82127';b.style.color='#fff';b.textContent='● LIVE';loadList(false);liveTimer=setInterval(()=>loadList(false),30000);}
+  if(live){document.getElementById('dfilter').value='';updateDateBtn();b.style.background='#e82127';b.style.color='#fff';b.textContent='● LIVE';loadList(false);liveTimer=setInterval(()=>loadList(false),30000);}
   else{b.style.background='#fff';b.style.color='#000';b.textContent='LIVE';clearInterval(liveTimer);}
 }
 function label(t){

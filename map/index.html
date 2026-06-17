@@ -17,8 +17,11 @@ body{margin:0;font-family:sans-serif}
 #login{position:fixed;inset:0;background:#111;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:1000}
 #login input{padding:12px;width:240px;border-radius:8px;border:none;font-size:16px}
 #login button{padding:12px 24px;border-radius:8px;border:none;background:#1a73e8;color:#fff;font-size:16px}
-#stats{position:fixed;top:10px;right:10px;z-index:900;background:rgba(255,255,255,.93);padding:8px 12px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.3);font-size:13px;display:none;max-width:70%}
-#month{position:fixed;top:10px;left:10px;z-index:900;background:rgba(26,115,232,.92);color:#fff;padding:6px 10px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.3);font-size:12px;display:none}
+#stats{position:fixed;top:10px;right:10px;z-index:900;background:rgba(255,255,255,.94);padding:8px 12px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.3);font-size:13px;line-height:1.5;display:none;max-width:72%}
+#cur{position:fixed;bottom:96px;left:10px;z-index:900;background:rgba(255,255,255,.95);padding:7px 12px;border-radius:10px;box-shadow:0 1px 5px rgba(0,0,0,.35);display:none;text-align:center;min-width:92px}
+#cur .u{font-size:11px;color:#666}
+#cur .v{font-size:23px;font-weight:bold;line-height:1.15}
+#cur .g{font-size:13px;font-weight:bold;margin-top:1px}
 #legend{position:fixed;bottom:64px;left:10px;z-index:900;background:rgba(255,255,255,.92);padding:4px 9px;border-radius:6px;font-size:11px;display:none;box-shadow:0 1px 4px rgba(0,0,0,.3)}
 #legend b{font-size:14px;vertical-align:-1px}
 #bar{position:fixed;bottom:16px;left:10px;right:10px;z-index:900;display:none;gap:8px;align-items:center}
@@ -37,8 +40,8 @@ body{margin:0;font-family:sans-serif}
 <button onclick="login()">로그인</button>
 <div id="msg"></div>
 </div>
-<div id="month"></div>
 <div id="stats"></div>
+<div id="cur"></div>
 <div id="legend">느림 <b style="color:#5e35b1">●</b><b style="color:#1e88e5">●</b><b style="color:#00acc1">●</b><b style="color:#7cb342">●</b><b style="color:#2e7d32">●</b> 빠름</div>
 <div id="bar">
 <button id="dbtn" onclick="openDate()" title="날짜 필터">📅</button>
@@ -59,7 +62,7 @@ const MI2KM=1.60934;
 const KWH_TOTAL=62;     // Model Y 프리미엄 RWD (62.1kWh)
 const WON_PER_KWH=314;  // 집 충전 요금
 const sb=supabase.createClient(SB_URL,SB_KEY);
-let map,layer,trips=[],curKey=null,live=false,liveTimer=null,geocache={};
+let map,layer,trips=[],curKey=null,live=false,liveTimer=null,geocache={},monthStr='';
 function kmh(mph){return (mph==null)?null:Math.round(mph*MI2KM);}
 function speedColor(v){
   if(v==null)return '#1a73e8';
@@ -69,6 +72,7 @@ function speedColor(v){
   if(v<80)return '#7cb342';
   return '#2e7d32';
 }
+function gearColor(g){return g==='D'?'#2e7d32':(g==='R'?'#e65100':(g==='P'?'#555':'#1a73e8'));}
 function openDate(){
   const f=document.getElementById('dfilter');
   if(f.value){f.value='';updateDateBtn();loadList(false);return;}
@@ -93,7 +97,7 @@ function start(){
   document.getElementById('bar').style.display='flex';
   document.getElementById('stats').style.display='block';
   document.getElementById('legend').style.display='block';
-  if(!map){map=L.map('map',{zoomControl:false}).setView([37.32,127.1],12);
+  if(!map){map=L.map('map').setView([37.32,127.1],12);
     L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap, HOT'}).addTo(map);}
   loadList(false);
 }
@@ -147,15 +151,13 @@ async function loadList(keepSel){
     const d=new Date(t.start).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'}).slice(0,7);
     if(d===ym){mCnt++;if(t.odoMin!=null&&t.odoMax!=null&&t.odoMax>=t.odoMin)mKm+=(t.odoMax-t.odoMin)*MI2KM;}
   });
-  const mEl=document.getElementById('month');
-  mEl.style.display='block';
-  mEl.textContent='📅 이번 달 '+mKm.toFixed(0)+'km · '+mCnt+'회';
+  monthStr='📅 이번 달 '+mKm.toFixed(0)+'km · '+mCnt+'회';
   const df=document.getElementById('dfilter').value;
   let viewT=trips;
   if(df){viewT=trips.filter(t=>new Date(t.start).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'})===df);}
   const sel=document.getElementById('sel');
   sel.innerHTML='';
-  if(!viewT.length){const o=document.createElement('option');o.text='(그 날짜 주행 없음)';sel.add(o);return;}
+  if(!viewT.length){const o=document.createElement('option');o.text='(그 날짜 주행 없음)';sel.add(o);document.getElementById('stats').innerHTML='<div style="color:#1a73e8;font-weight:bold">'+monthStr+'</div>';document.getElementById('cur').style.display='none';return;}
   viewT.forEach(t=>{const o=document.createElement('option');o.value=t.key;o.text=label(t);sel.add(o);});
   let pick=(keepSel&&curKey&&viewT.some(t=>t.key===curKey))?curKey:viewT[0].key;
   sel.value=pick;selectTrip(pick);
@@ -184,7 +186,8 @@ function render(t,a){
   a.forEach(p=>{
     const tm=new Date(p.ts).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
     const v=kmh(p.speed);
-    L.circleMarker([p.lat,p.lng],{radius:4,color:'#555',weight:1}).bindPopup(tm+(v!=null?'<br>'+v+'km/h':'')).addTo(layer);
+    const sh=p.shift_state?(' · '+p.shift_state):'';
+    L.circleMarker([p.lat,p.lng],{radius:4,color:'#555',weight:1}).bindPopup(tm+(v!=null?'<br>'+v+'km/h':'')+sh).addTo(layer);
   });
   L.circleMarker(pts[0],{radius:9,color:'#1a7f37',fillColor:'#2ea043',fillOpacity:1}).bindPopup('🟢 출발').addTo(layer);
   L.circleMarker(pts[pts.length-1],{radius:9,color:'#7a0d11',fillColor:'#e82127',fillOpacity:1}).bindPopup('🔴 도착').addTo(layer);
@@ -195,6 +198,12 @@ function render(t,a){
   const min=Math.max(0,Math.round((new Date(a[a.length-1].ts)-new Date(a[0].ts))/60000));
   const avg=min>0?Math.round(km/(min/60)):0;
   let mx=0;a.forEach(p=>{const v=kmh(p.speed);if(v!=null&&v>mx)mx=v;});
+  const last=a[a.length-1];
+  const lv=kmh(last.speed);
+  const lg=last.shift_state||'-';
+  const curEl=document.getElementById('cur');
+  curEl.style.display='block';
+  curEl.innerHTML='<div class="u">'+(live?'🔴 현재':'🏁 마지막')+'</div><div class="v">'+(lv!=null?lv:0)+' <span class="u">km/h</span></div><div class="g" style="color:'+gearColor(lg)+'">'+lg+'</div>';
   const b0=a[0].battery,bN=a[a.length-1].battery;
   let line2='';
   if(b0!=null&&bN!=null){
@@ -207,7 +216,9 @@ function render(t,a){
       line2+=' (−'+used+'%) · ⚡ '+won+'원 · '+eff+'km/kWh';
     }
   }
-  let html='📏 '+km.toFixed(1)+'km · ⏱️ '+min+'분 · 🚗 평균 '+avg+'km/h'+(mx>0?(' · 🏁 최고 '+mx+'km/h'):'');
+  let html='<div style="color:#1a73e8;font-weight:bold;margin-bottom:2px">'+monthStr+'</div>';
+  html+='📏 '+km.toFixed(1)+'km · ⏱️ '+min+'분';
+  html+='<br>🚗 평균 '+avg+(mx>0?(' · 🏁 최고 '+mx):'')+'km/h';
   if(line2)html+='<br>'+line2;
   html+='<div id="place" style="margin-top:4px;color:#1a73e8">📍 …</div>';
   document.getElementById('stats').innerHTML=html;

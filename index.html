@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>주행기록</title>
+<meta name="theme-color" content="#1a73e8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DriveLog">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20192%20192%22%3E%3Crect%20width%3D%22192%22%20height%3D%22192%22%20rx%3D%2240%22%20fill%3D%22%231a73e8%22%2F%3E%3Ctext%20x%3D%2296%22%20y%3D%22122%22%20font-size%3D%2274%22%20fill%3D%22%23ffffff%22%20text-anchor%3D%22middle%22%20font-family%3D%22sans-serif%22%3EDL%3C%2Ftext%3E%3C%2Fsvg%3E">
+<link rel="manifest" href='data:application/manifest+json,{"name":"DriveLog","short_name":"DriveLog","start_url":"./","display":"standalone","background_color":"%23111111","theme_color":"%231a73e8","icons":[{"src":"data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20192%20192%22%3E%3Crect%20width%3D%22192%22%20height%3D%22192%22%20rx%3D%2240%22%20fill%3D%22%231a73e8%22%2F%3E%3Ctext%20x%3D%2296%22%20y%3D%22122%22%20font-size%3D%2274%22%20fill%3D%22%23ffffff%22%20text-anchor%3D%22middle%22%20font-family%3D%22sans-serif%22%3EDL%3C%2Ftext%3E%3C%2Fsvg%3E","sizes":"192x192","type":"image/svg+xml"}]}'>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+body{margin:0;font-family:sans-serif}
+#map{height:100vh;width:100%}
+#login{position:fixed;inset:0;background:#111;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:1000}
+#login input{padding:12px;width:240px;border-radius:8px;border:none;font-size:16px}
+#login button{padding:12px 24px;border-radius:8px;border:none;background:#1a73e8;color:#fff;font-size:16px}
+#stats{position:fixed;top:10px;right:10px;z-index:900;background:rgba(255,255,255,.94);padding:8px 12px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.3);font-size:13px;line-height:1.5;display:none;max-width:72%}
+#cur{position:fixed;bottom:96px;left:10px;z-index:900;background:rgba(255,255,255,.95);padding:7px 12px;border-radius:10px;box-shadow:0 1px 5px rgba(0,0,0,.35);display:none;text-align:center;min-width:92px}
+#cur .u{font-size:11px;color:#666}
+#cur .v{font-size:23px;font-weight:bold;line-height:1.15}
+#cur .g{font-size:13px;font-weight:bold;margin-top:1px}
+#legend{position:fixed;bottom:64px;left:10px;z-index:900;background:rgba(255,255,255,.92);padding:4px 9px;border-radius:6px;font-size:11px;display:none;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+#legend b{font-size:14px;vertical-align:-1px}
+#bar{position:fixed;bottom:16px;left:10px;right:10px;z-index:900;display:none;gap:8px;align-items:center}
+#bar #dbtn{flex:0 0 auto;width:46px;padding:10px 0;font-size:17px}
+#bar #dfilter{position:absolute;left:10px;bottom:0;width:46px;height:40px;opacity:0;pointer-events:none;border:0;padding:0;margin:0}
+#bar #seldd{flex:1;min-width:90px;position:relative}
+#bar #selbtn{width:100%;padding:10px;border-radius:8px;border:none;font-size:15px;box-shadow:0 1px 4px rgba(0,0,0,.3);background:#fff;font-weight:normal;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#bar #sellist{display:none;position:absolute;bottom:48px;left:0;right:0;max-height:50vh;overflow-y:auto;background:#fff;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.35)}
+#bar #sellist .dditem{padding:13px 14px;font-size:15px;border-bottom:1px solid #eee;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#bar #sellist .dditem:active{background:#e8f0fe}
+#bar button{padding:10px 13px;border-radius:8px;border:none;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3);font-weight:bold}
+#msg{color:#f88;font-size:14px;min-height:18px}
+</style>
+</head>
+<body>
+<div id="login">
+<h2>🚗 주행기록</h2>
+<input id="email" type="email" placeholder="이메일">
+<input id="pw" type="password" placeholder="비밀번호">
+<button onclick="login()">로그인</button>
+<div id="msg"></div>
+</div>
+<div id="stats"></div>
+<div id="cur"></div>
+<div id="legend">느림 <b style="color:#e53935">●</b><b style="color:#fb8c00">●</b><b style="color:#fbc02d">●</b><b style="color:#7cb342">●</b><b style="color:#2e7d32">●</b> 빠름</div>
+<div id="bar">
+<button id="dbtn" onclick="openDate()" title="날짜 필터">📅</button>
+<input id="dfilter" type="date" onchange="onDateChange()">
+<div id="seldd"><button id="selbtn" onclick="toggleDD()">주행 선택 ▾</button><div id="sellist"></div></div>
+<button id="live" onclick="toggleLive()">LIVE</button>
+<button onclick="loadList(true)">↻</button>
+</div>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SB_URL="https://rzdjebtjlejjskvjrdec.supabase.co";
+const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ6ZGplYnRqbGVqanNrdmpyZGVjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MTA0NDUsImV4cCI6MjA5Njk4NjQ0NX0.Gsd-dNi0nXVKXPu4Ch3etZrc0Kf-WDaJA6bjlKVxdo4";
+const MERGE_GAP_MIN=2;
+const MI2KM=1.60934;
+const KWH_TOTAL=62;     // Model Y 프리미엄 RWD (62.1kWh)
+const WON_PER_KWH=314;  // 집 충전 요금
+const sb=supabase.createClient(SB_URL,SB_KEY);
+let map,layer,trips=[],curKey=null,live=false,liveTimer=null,geocache={},monthStr='';
+function kmh(mph){return (mph==null)?null:Math.round(mph*MI2KM);}
+function speedColor(v){
+  if(v==null)return '#1a73e8';
+  if(v<20)return '#e53935';
+  if(v<40)return '#fb8c00';
+  if(v<60)return '#fbc02d';
+  if(v<80)return '#7cb342';
+  return '#2e7d32';
+}
+function gearColor(g){return g==='D'?'#2e7d32':(g==='R'?'#e65100':(g==='P'?'#555':'#1a73e8'));}
+function openDate(){
+  const f=document.getElementById('dfilter');
+  if(f.value){f.value='';updateDateBtn();loadList(false);return;}
+  try{f.showPicker();}catch(e){try{f.focus();f.click();}catch(_){}}
+}
+function onDateChange(){updateDateBtn();loadList(false);}
+function updateDateBtn(){
+  const f=document.getElementById('dfilter');
+  const b=document.getElementById('dbtn');
+  if(f.value){b.style.background='#1a73e8';b.style.color='#fff';}
+  else{b.style.background='#fff';b.style.color='#000';}
+}
+async function login(){
+  const email=document.getElementById('email').value;
+  const pw=document.getElementById('pw').value;
+  const {error}=await sb.auth.signInWithPassword({email,password:pw});
+  if(error){document.getElementById('msg').innerText="로그인 실패: "+error.message;return;}
+  start();
+}
+function start(){
+  document.getElementById('login').style.display='none';
+  document.getElementById('bar').style.display='flex';
+  document.getElementById('stats').style.display='block';
+  document.getElementById('legend').style.display='block';
+  if(!map){map=L.map('map').setView([37.32,127.1],12);
+    L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap, HOT'}).addTo(map);}
+  loadList(false);
+}
+function toggleLive(){
+  live=!live;
+  const b=document.getElementById('live');
+  if(live){document.getElementById('dfilter').value='';updateDateBtn();b.style.background='#e82127';b.style.color='#fff';b.textContent='● LIVE';loadList(false);liveTimer=setInterval(()=>loadList(false),30000);}
+  else{b.style.background='#fff';b.style.color='#000';b.textContent='LIVE';clearInterval(liveTimer);}
+}
+function label(t){
+  const w=new Date(t.start);
+  const s=w.toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const tag=(t.key&&t.key.indexOf('drive-')===0)?'':' (테스트)';
+  const merged=t.segs>1?(' · '+t.segs+'구간'):'';
+  return s+tag+' · '+t.points+'개'+merged;
+}
+function dist(a,b){
+  const R=6371,r=x=>x*Math.PI/180;
+  const dLat=r(b[0]-a[0]),dLng=r(b[1]-a[1]);
+  const s=Math.sin(dLat/2)**2+Math.cos(r(a[0]))*Math.cos(r(b[0]))*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
+}
+async function placeName(lat,lng){
+  const key=lat.toFixed(4)+','+lng.toFixed(4);
+  if(geocache[key])return geocache[key];
+  try{
+    const r=await fetch('https://nominatim.openstreetmap.org/reverse?format=json&zoom=16&accept-language=ko&lat='+lat+'&lon='+lng);
+    const j=await r.json();const a=j.address||{};
+    const n=a.suburb||a.neighbourhood||a.quarter||a.borough||a.city_district||a.town||a.village||a.road||a.city||'?';
+    geocache[key]=n;return n;
+  }catch(e){return '?';}
+}
+function toggleDD(){const l=document.getElementById('sellist');l.style.display=(l.style.display==='block')?'none':'block';}
+function closeDD(){const l=document.getElementById('sellist');if(l)l.style.display='none';}
+function setSel(key){const t=trips.find(x=>x.key===key);document.getElementById('selbtn').textContent=(t?label(t):'주행 선택')+' ▾';}
+function pickTrip(key){setSel(key);closeDD();selectTrip(key);}
+document.addEventListener('click',e=>{const dd=document.getElementById('seldd');if(dd&&!dd.contains(e.target))closeDD();});
+async function loadList(keepSel){
+  const {data,error}=await sb.from('drive_list').select('*');
+  if(error){if(!live)alert('목록 읽기 실패: '+error.message);return;}
+  let segs=(data||[]).map(d=>({id:d.drive_id,start:new Date(d.start_ts).getTime(),end:new Date(d.end_ts).getTime(),points:d.points,odoMin:d.odo_min,odoMax:d.odo_max}));
+  segs.sort((a,b)=>a.start-b.start);
+  const GAP=MERGE_GAP_MIN*60000;trips=[];
+  segs.forEach(s=>{const last=trips[trips.length-1];
+    if(last&&(s.start-last.end)<=GAP){
+      last.ids.push(s.id);last.end=s.end;last.points+=s.points;last.segs++;
+      if(s.odoMin!=null&&(last.odoMin==null||s.odoMin<last.odoMin))last.odoMin=s.odoMin;
+      if(s.odoMax!=null&&(last.odoMax==null||s.odoMax>last.odoMax))last.odoMax=s.odoMax;
+    }else{trips.push({ids:[s.id],start:s.start,end:s.end,points:s.points,segs:1,odoMin:s.odoMin,odoMax:s.odoMax});}});
+  if(!trips.length){if(!live)alert('데이터 없음');return;}
+  trips.sort((a,b)=>b.end-a.end);
+  trips.forEach(t=>t.key=t.ids[0]);
+  const ym=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'}).slice(0,7);
+  let mKm=0,mCnt=0;
+  trips.forEach(t=>{
+    const d=new Date(t.start).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'}).slice(0,7);
+    if(d===ym){mCnt++;if(t.odoMin!=null&&t.odoMax!=null&&t.odoMax>=t.odoMin)mKm+=(t.odoMax-t.odoMin)*MI2KM;}
+  });
+  monthStr='📅 이번 달 '+mKm.toFixed(0)+'km · '+mCnt+'회';
+  const df=document.getElementById('dfilter').value;
+  let viewT=trips;
+  if(df){viewT=trips.filter(t=>new Date(t.start).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'})===df);}
+  const list=document.getElementById('sellist');
+  list.innerHTML='';
+  if(!viewT.length){document.getElementById('selbtn').textContent='(그 날짜 주행 없음) ▾';document.getElementById('stats').innerHTML='<div style="color:#1a73e8;font-weight:bold">'+monthStr+'</div>';document.getElementById('cur').style.display='none';return;}
+  viewT.forEach(t=>{const it=document.createElement('div');it.className='dditem';it.textContent=label(t);it.onclick=()=>pickTrip(t.key);list.appendChild(it);});
+  let pick=(keepSel&&curKey&&viewT.some(t=>t.key===curKey))?curKey:viewT[0].key;
+  setSel(pick);selectTrip(pick);
+}
+async function selectTrip(key){
+  curKey=key;
+  const t=trips.find(x=>x.key===key);if(!t)return;
+  const {data,error}=await sb.from('positions').select('*').in('drive_id',t.ids).order('ts',{ascending:true});
+  if(error){if(!live)alert('경로 읽기 실패: '+error.message);return;}
+  render(t,data||[]);
+}
+function render(t,a){
+  if(layer)map.removeLayer(layer);
+  layer=L.layerGroup().addTo(map);
+  a=a.filter(p=>p.lat&&p.lng);
+  const pts=a.map(p=>[p.lat,p.lng]);
+  if(!pts.length)return;
+  for(let i=1;i<a.length;i++){
+    const v=kmh(a[i].speed);
+    L.polyline([pts[i-1],pts[i]],{color:speedColor(v),weight:5}).addTo(layer);
+  }
+  const host=L.polyline(pts,{opacity:0}).addTo(layer);
+  if(L.polylineDecorator){
+    L.polylineDecorator(host,{patterns:[{offset:25,repeat:85,symbol:L.Symbol.arrowHead({pixelSize:11,polygon:true,pathOptions:{fill:true,fillColor:'#e82127',fillOpacity:1,color:'#e82127',weight:1}})}]}).addTo(layer);
+  }
+  a.forEach(p=>{
+    const tm=new Date(p.ts).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
+    const v=kmh(p.speed);
+    const sh=p.shift_state?(' · '+p.shift_state):'';
+    L.circleMarker([p.lat,p.lng],{radius:4,color:'#555',weight:1}).bindPopup(tm+(v!=null?'<br>'+v+'km/h':'')+sh).addTo(layer);
+  });
+  L.circleMarker(pts[0],{radius:9,color:'#1a7f37',fillColor:'#2ea043',fillOpacity:1}).bindPopup('🟢 출발').addTo(layer);
+  L.circleMarker(pts[pts.length-1],{radius:9,color:'#7a0d11',fillColor:'#e82127',fillOpacity:1}).bindPopup('🔴 도착').addTo(layer);
+  let km;
+  const o0=a[0].odometer,oN=a[a.length-1].odometer;
+  if(o0!=null&&oN!=null&&oN>=o0){km=(oN-o0)*MI2KM;}
+  else{km=0;for(let i=1;i<a.length;i++)km+=dist(pts[i-1],pts[i]);}
+  const min=Math.max(0,Math.round((new Date(a[a.length-1].ts)-new Date(a[0].ts))/60000));
+  const avg=min>0?Math.round(km/(min/60)):0;
+  let mx=0;a.forEach(p=>{const v=kmh(p.speed);if(v!=null&&v>mx)mx=v;});
+  const last=a[a.length-1];
+  const lv=kmh(last.speed);
+  const lg=last.shift_state||'-';
+  const curEl=document.getElementById('cur');
+  curEl.style.display='block';
+  curEl.innerHTML='<div class="u">'+(live?'🔴 현재':'🏁 마지막')+'</div><div class="v">'+(lv!=null?lv:0)+' <span class="u">km/h</span></div><div class="g" style="color:'+gearColor(lg)+'">'+lg+'</div>';
+  const b0=a[0].battery,bN=a[a.length-1].battery;
+  let line2='';
+  if(b0!=null&&bN!=null){
+    const used=b0-bN;
+    line2='🔋 '+b0+'%→'+bN+'%';
+    if(used>0){
+      const kwh=used/100*KWH_TOTAL;
+      const won=Math.round(kwh*WON_PER_KWH);
+      const eff=(kwh>0&&km>0)?(km/kwh).toFixed(1):'-';
+      line2+=' (−'+used+'%) · ⚡ '+won+'원 · '+eff+'km/kWh';
+    }
+  }
+  let html='<div style="color:#1a73e8;font-weight:bold;margin-bottom:2px">'+monthStr+'</div>';
+  html+='📏 '+km.toFixed(1)+'km · ⏱️ '+min+'분';
+  html+='<br>🚗 평균 '+avg+(mx>0?(' · 🏁 최고 '+mx):'')+'km/h';
+  if(line2)html+='<br>'+line2;
+  html+='<div id="place" style="margin-top:4px;color:#1a73e8">📍 …</div>';
+  document.getElementById('stats').innerHTML=html;
+  Promise.all([placeName(pts[0][0],pts[0][1]),placeName(pts[pts.length-1][0],pts[pts.length-1][1])]).then(([s,e])=>{
+    const pl=document.getElementById('place');if(pl)pl.textContent='📍 '+s+' → '+e;});
+  if(!live)map.fitBounds(pts);
+}
+sb.auth.getSession().then(({data})=>{if(data.session)start();});
+</script>
+</body>
+</html>

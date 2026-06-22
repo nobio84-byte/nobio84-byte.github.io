@@ -68,7 +68,7 @@ const KWH_TOTAL=62;     // Model Y 프리미엄 RWD (62.1kWh)
 let WON_PER_KWH=+localStorage.getItem('won_per_kwh')||314;  // 집 충전 단가(⚡버튼으로 수정)
 const API_LIMIT=4000;   // 이번 달 API 안전 한도 (무료 ~$10 ≈ 5000콜, 버퍼 두고 4000). 조정 가능
 const sb=supabase.createClient(SB_URL,SB_KEY);
-let map,layer,trips=[],curKey=null,live=false,liveTimer=null,geocache={},monthStr='';
+let map,layer,trips=[],curKey=null,live=false,liveTimer=null,geocache={},monthStr='',curData=[],replayMarker=null,replayTimer=null,arrowDeco=null,arrowTimer=null,arrowOffset=0;
 function kmh(mph){return (mph==null)?null:Math.round(mph*MI2KM);}
 function editRate(){
   const v=prompt('전기 단가 (원/kWh)\n실제 충전 요금으로 바꾸세요.',WON_PER_KWH);
@@ -89,6 +89,38 @@ function speedColor(v){
   return '#2e7d32';
 }
 function gearColor(g){return g==='D'?'#2e7d32':(g==='R'?'#e65100':(g==='P'?'#555':'#1a73e8'));}
+function stopReplay(){
+  if(replayTimer){clearInterval(replayTimer);replayTimer=null;}
+  if(replayMarker){map.removeLayer(replayMarker);replayMarker=null;}
+}
+function stopArrows(){if(arrowTimer){clearInterval(arrowTimer);arrowTimer=null;}}
+function startArrows(){if(!arrowDeco||arrowTimer||document.hidden)return;arrowTimer=setInterval(()=>{arrowOffset=(arrowOffset+3)%85;arrowDeco.setPatterns([{offset:arrowOffset,repeat:85,symbol:arrowSym()}]);},70);}
+function arrowSym(){return L.Symbol.arrowHead({pixelSize:11,polygon:true,pathOptions:{fill:true,fillColor:'#e82127',fillOpacity:1,color:'#e82127',weight:1}});}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stopArrows();else startArrows();});
+function playRoute(){
+  stopReplay();
+  const pts=(curData||[]).filter(p=>p.lat&&p.lng);
+  if(pts.length<2)return;
+  const curEl=document.getElementById('cur');
+  let i=0;const total=pts.length;
+  const iv=Math.max(60,Math.min(400,Math.round(12000/total)));
+  replayMarker=L.circleMarker([pts[0].lat,pts[0].lng],{radius:9,color:'#fff',weight:2,fillColor:'#e82127',fillOpacity:1}).addTo(map);
+  replayTimer=setInterval(()=>{
+    if(i>=total){
+      clearInterval(replayTimer);replayTimer=null;
+      if(replayMarker){map.removeLayer(replayMarker);replayMarker=null;}
+      const lp=pts[total-1],lv=kmh(lp.speed),lg=lp.shift_state||'-';
+      curEl.innerHTML='<div class="u">'+(live?'🔴 현재':'🏁 마지막')+'</div><div class="v">'+(lv!=null?lv:0)+' <span class="u">km/h</span></div><div class="g" style="color:'+gearColor(lg)+'">'+lg+'</div>';
+      return;
+    }
+    const p=pts[i];
+    replayMarker.setLatLng([p.lat,p.lng]);
+    const v=kmh(p.speed),g=p.shift_state||'-';
+    curEl.style.display='block';
+    curEl.innerHTML='<div class="u">▶ 재생</div><div class="v">'+(v!=null?v:0)+' <span class="u">km/h</span></div><div class="g" style="color:'+gearColor(g)+'">'+g+'</div>';
+    i++;
+  },iv);
+}
 function openDate(){
   const f=document.getElementById('dfilter');
   if(f.value){f.value='';updateDateBtn();loadList(false);return;}
@@ -211,7 +243,9 @@ async function selectTrip(key){
 function render(t,a){
   if(layer)map.removeLayer(layer);
   layer=L.layerGroup().addTo(map);
+  stopReplay();stopArrows();
   a=a.filter(p=>p.lat&&p.lng);
+  curData=a;
   const pts=a.map(p=>[p.lat,p.lng]);
   if(!pts.length)return;
   for(let i=1;i<a.length;i++){
@@ -220,7 +254,9 @@ function render(t,a){
   }
   const host=L.polyline(pts,{opacity:0}).addTo(layer);
   if(L.polylineDecorator){
-    L.polylineDecorator(host,{patterns:[{offset:25,repeat:85,symbol:L.Symbol.arrowHead({pixelSize:11,polygon:true,pathOptions:{fill:true,fillColor:'#e82127',fillOpacity:1,color:'#e82127',weight:1}})}]}).addTo(layer);
+    arrowOffset=0;
+    arrowDeco=L.polylineDecorator(host,{patterns:[{offset:0,repeat:85,symbol:arrowSym()}]}).addTo(layer);
+    startArrows();
   }
   a.forEach(p=>{
     const tm=new Date(p.ts).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false});
@@ -261,6 +297,7 @@ function render(t,a){
   if(line2)html+='<br>'+line2;
   html+='<div id="place" style="margin-top:4px;color:#1a73e8">📍 …</div>';
   html+='<div onclick="editRate()" style="margin-top:5px;color:#5f6368;font-size:12px">⚡ 단가 '+WON_PER_KWH+'원/kWh 변경 ›</div>';
+  html+='<div onclick="playRoute()" style="margin-top:3px;color:#1a73e8;font-size:12px;font-weight:bold">▶ 경로 재생</div>';
   document.getElementById('stats').innerHTML=html;
   Promise.all([placeName(pts[0][0],pts[0][1]),placeName(pts[pts.length-1][0],pts[pts.length-1][1])]).then(([s,e])=>{
     const pl=document.getElementById('place');if(pl)pl.textContent='📍 '+s+' → '+e;});

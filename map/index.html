@@ -31,7 +31,7 @@ body{margin:0;font-family:sans-serif}
 #bar #selbtn{width:100%;padding:10px;border-radius:8px;border:none;font-size:15px;box-shadow:0 1px 4px rgba(0,0,0,.3);background:#fff;font-weight:normal;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #bar #sellist{display:none;position:absolute;bottom:48px;left:0;right:0;max-height:50vh;overflow-y:auto;background:#fff;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.35)}
 #bar #sellist .dditem{padding:13px 14px;font-size:15px;border-bottom:1px solid #eee;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#bar #sellist .ddday{padding:9px 14px 4px;font-size:12px;font-weight:bold;color:#5f6368;background:#f1f3f4;border-bottom:1px solid #ddd;position:sticky;top:0}
+#bar #sellist .ddday{padding:8px 14px;font-size:13px;font-weight:bold;color:#fff;background:#1a73e8;position:sticky;top:0}
 #bar #sellist .dditem:active{background:#e8f0fe}
 #bar button{padding:10px 13px;border-radius:8px;border:none;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3);font-weight:bold}
 #msg{color:#f88;font-size:14px;min-height:18px}
@@ -66,6 +66,7 @@ const MERGE_GAP_MIN=2;
 const MI2KM=1.60934;
 const KWH_TOTAL=62;     // Model Y 프리미엄 RWD (62.1kWh)
 const WON_PER_KWH=314;  // 집 충전 요금
+const API_LIMIT=4000;   // 이번 달 API 안전 한도 (무료 ~$10 ≈ 5000콜, 버퍼 두고 4000). 조정 가능
 const sb=supabase.createClient(SB_URL,SB_KEY);
 let map,layer,trips=[],curKey=null,live=false,liveTimer=null,geocache={},monthStr='';
 function kmh(mph){return (mph==null)?null:Math.round(mph*MI2KM);}
@@ -166,12 +167,14 @@ async function loadList(keepSel){
   trips.sort((a,b)=>b.end-a.end);
   trips.forEach(t=>t.key=t.ids[0]);
   const ym=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'}).slice(0,7);
-  let mKm=0,mCnt=0;
+  let mKm=0,mCnt=0,mCalls=0;
   trips.forEach(t=>{
     const d=new Date(t.start).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'}).slice(0,7);
-    if(d===ym){mCnt++;if(t.odoMin!=null&&t.odoMax!=null&&t.odoMax>=t.odoMin)mKm+=(t.odoMax-t.odoMin)*MI2KM;}
+    if(d===ym){mCnt++;mCalls+=(t.points||0);if(t.odoMin!=null&&t.odoMax!=null&&t.odoMax>=t.odoMin)mKm+=(t.odoMax-t.odoMin)*MI2KM;}
   });
-  monthStr='📅 이번 달 '+mKm.toFixed(0)+'km · '+mCnt+'회';
+  const _pct=mCalls/API_LIMIT;
+  const _col=_pct>=0.9?'#d93025':(_pct>=0.7?'#e37400':'#34a853');
+  monthStr='📅 이번 달 '+mKm.toFixed(0)+'km · '+mCnt+'회 · <span style="color:'+_col+'">📡 '+mCalls+'/'+API_LIMIT+'</span>';
   const df=document.getElementById('dfilter').value;
   let viewT=trips;
   if(df){viewT=trips.filter(t=>new Date(t.start).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'})===df);}

@@ -31,6 +31,7 @@ body{margin:0;font-family:sans-serif}
 #bar #selbtn{width:100%;padding:10px;border-radius:8px;border:none;font-size:15px;box-shadow:0 1px 4px rgba(0,0,0,.3);background:#fff;font-weight:normal;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #bar #sellist{display:none;position:absolute;bottom:48px;left:0;right:0;max-height:50vh;overflow-y:auto;background:#fff;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,.35)}
 #bar #sellist .dditem{padding:13px 14px;font-size:15px;border-bottom:1px solid #eee;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#bar #sellist .ddday{padding:9px 14px 4px;font-size:12px;font-weight:bold;color:#5f6368;background:#f1f3f4;border-bottom:1px solid #ddd;position:sticky;top:0}
 #bar #sellist .dditem:active{background:#e8f0fe}
 #bar button{padding:10px 13px;border-radius:8px;border:none;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3);font-weight:bold}
 #msg{color:#f88;font-size:14px;min-height:18px}
@@ -113,10 +114,20 @@ function toggleLive(){
 }
 function label(t){
   const w=new Date(t.start);
-  const s=w.toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const s=w.toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});
   const tag=(t.key&&t.key.indexOf('drive-')===0)?'':' (테스트)';
   const merged=t.segs>1?(' · '+t.segs+'구간'):'';
   return s+tag+' · '+t.points+'개'+merged;
+}
+function rowLabel(t){
+  const tm=new Date(t.start).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',hour12:false});
+  const tag=(t.key&&t.key.indexOf('drive-')===0)?'':' (테스트)';
+  const merged=t.segs>1?(' · '+t.segs+'구간'):'';
+  return tm+tag+' · '+t.points+'개'+merged;
+}
+function dayHeader(start){
+  const d=new Date(start);
+  return d.toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul',month:'long',day:'numeric'})+' ('+d.toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul',weekday:'short'})+')';
 }
 function dist(a,b){
   const R=6371,r=x=>x*Math.PI/180;
@@ -140,7 +151,7 @@ function setSel(key){const t=trips.find(x=>x.key===key);document.getElementById(
 function pickTrip(key){setSel(key);closeDD();selectTrip(key);}
 document.addEventListener('click',e=>{const dd=document.getElementById('seldd');if(dd&&!dd.contains(e.target))closeDD();});
 async function loadList(keepSel){
-  const {data,error}=await sb.from('drive_list').select('*');
+  const {data,error}=await sb.from('drive_list').select('*').order('end_ts',{ascending:false}).limit(500);
   if(error){if(!live)alert('목록 읽기 실패: '+error.message);return;}
   let segs=(data||[]).map(d=>({id:d.drive_id,start:new Date(d.start_ts).getTime(),end:new Date(d.end_ts).getTime(),points:d.points,odoMin:d.odo_min,odoMax:d.odo_max}));
   segs.sort((a,b)=>a.start-b.start);
@@ -167,7 +178,13 @@ async function loadList(keepSel){
   const list=document.getElementById('sellist');
   list.innerHTML='';
   if(!viewT.length){document.getElementById('selbtn').textContent='(그 날짜 주행 없음) ▾';document.getElementById('stats').innerHTML='<div style="color:#1a73e8;font-weight:bold">'+monthStr+'</div>';document.getElementById('cur').style.display='none';return;}
-  viewT.forEach(t=>{const it=document.createElement('div');it.className='dditem';it.textContent=label(t);it.onclick=()=>pickTrip(t.key);list.appendChild(it);});
+  let prevDay='';
+  viewT.forEach(t=>{
+    const day=new Date(t.start).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'});
+    if(day!==prevDay){prevDay=day;const h=document.createElement('div');h.className='ddday';h.textContent=dayHeader(t.start);list.appendChild(h);}
+    const it=document.createElement('div');it.className='dditem';it.textContent=rowLabel(t);
+    it.onclick=()=>pickTrip(t.key);list.appendChild(it);
+  });
   let pick=(keepSel&&curKey&&viewT.some(t=>t.key===curKey))?curKey:viewT[0].key;
   setSel(pick);selectTrip(pick);
 }
@@ -193,7 +210,7 @@ function render(t,a){
     L.polylineDecorator(host,{patterns:[{offset:25,repeat:85,symbol:L.Symbol.arrowHead({pixelSize:11,polygon:true,pathOptions:{fill:true,fillColor:'#e82127',fillOpacity:1,color:'#e82127',weight:1}})}]}).addTo(layer);
   }
   a.forEach(p=>{
-    const tm=new Date(p.ts).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
+    const tm=new Date(p.ts).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false});
     const v=kmh(p.speed);
     const sh=p.shift_state?(' · '+p.shift_state):'';
     L.circleMarker([p.lat,p.lng],{radius:4,color:'#555',weight:1}).bindPopup(tm+(v!=null?'<br>'+v+'km/h':'')+sh).addTo(layer);

@@ -65,11 +65,21 @@ const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZ
 const MERGE_GAP_MIN=2;
 const MI2KM=1.60934;
 const KWH_TOTAL=62;     // Model Y 프리미엄 RWD (62.1kWh)
-const WON_PER_KWH=314;  // 집 충전 요금
+let WON_PER_KWH=+localStorage.getItem('won_per_kwh')||314;  // 집 충전 단가(⚡버튼으로 수정)
 const API_LIMIT=4000;   // 이번 달 API 안전 한도 (무료 ~$10 ≈ 5000콜, 버퍼 두고 4000). 조정 가능
 const sb=supabase.createClient(SB_URL,SB_KEY);
 let map,layer,trips=[],curKey=null,live=false,liveTimer=null,geocache={},monthStr='';
 function kmh(mph){return (mph==null)?null:Math.round(mph*MI2KM);}
+function editRate(){
+  const v=prompt('전기 단가 (원/kWh)\n실제 충전 요금으로 바꾸세요.',WON_PER_KWH);
+  if(v===null)return;
+  const n=parseFloat(v);
+  if(!isFinite(n)||n<=0){alert('숫자를 입력하세요');return;}
+  WON_PER_KWH=n;
+  localStorage.setItem('won_per_kwh',String(n));
+  if(curKey)selectTrip(curKey);
+  alert('전기 단가 '+n+'원/kWh 적용됐어요');
+}
 function speedColor(v){
   if(v==null)return '#1a73e8';
   if(v<20)return '#e53935';
@@ -180,7 +190,7 @@ async function loadList(keepSel){
   if(df){viewT=trips.filter(t=>new Date(t.start).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'})===df);}
   const list=document.getElementById('sellist');
   list.innerHTML='';
-  if(!viewT.length){document.getElementById('selbtn').textContent='(그 날짜 주행 없음) ▾';document.getElementById('stats').innerHTML='<div style="color:#1a73e8;font-weight:bold">'+monthStr+'</div>';document.getElementById('cur').style.display='none';return;}
+  if(!viewT.length){document.getElementById('selbtn').textContent='(그 날짜 주행 없음) ▾';document.getElementById('stats').innerHTML='<div style="color:#1a73e8;font-weight:bold">'+monthStr+'</div><div onclick="editRate()" style="margin-top:5px;color:#5f6368;font-size:12px">⚡ 단가 '+WON_PER_KWH+'원/kWh 변경 ›</div>';document.getElementById('cur').style.display='none';return;}
   let prevDay='';
   viewT.forEach(t=>{
     const day=new Date(t.start).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'});
@@ -250,6 +260,7 @@ function render(t,a){
   html+='<br>🚗 평균 '+avg+(mx>0?(' · 🏁 최고 '+mx):'')+'km/h';
   if(line2)html+='<br>'+line2;
   html+='<div id="place" style="margin-top:4px;color:#1a73e8">📍 …</div>';
+  html+='<div onclick="editRate()" style="margin-top:5px;color:#5f6368;font-size:12px">⚡ 단가 '+WON_PER_KWH+'원/kWh 변경 ›</div>';
   document.getElementById('stats').innerHTML=html;
   Promise.all([placeName(pts[0][0],pts[0][1]),placeName(pts[pts.length-1][0],pts[pts.length-1][1])]).then(([s,e])=>{
     const pl=document.getElementById('place');if(pl)pl.textContent='📍 '+s+' → '+e;});

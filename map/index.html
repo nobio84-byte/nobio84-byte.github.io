@@ -152,7 +152,7 @@ function start(){
 function toggleLive(){
   live=!live;
   const b=document.getElementById('live');
-  if(live){document.getElementById('dfilter').value='';updateDateBtn();b.style.background='#e82127';b.style.color='#fff';b.textContent='● LIVE';loadList(false);liveTimer=setInterval(()=>loadList(false),30000);}
+  if(live){document.getElementById('dfilter').value='';updateDateBtn();b.style.background='#e82127';b.style.color='#fff';b.textContent='● LIVE';loadList(false);liveTimer=setInterval(()=>loadList(false),5000);}
   else{b.style.background='#fff';b.style.color='#000';b.textContent='LIVE';clearInterval(liveTimer);}
 }
 function label(t){

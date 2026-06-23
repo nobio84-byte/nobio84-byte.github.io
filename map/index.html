@@ -53,7 +53,7 @@ body{margin:0;font-family:sans-serif}
 <input id="dfilter" type="date" onchange="onDateChange()">
 <div id="seldd"><button id="selbtn" onclick="toggleDD()">주행 선택 ▾</button><div id="sellist"></div></div>
 <button id="live" onclick="toggleLive()">LIVE</button>
-<button onclick="loadList(true)">↻</button>
+<button onclick="refresh()">↻</button>
 </div>
 <div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -193,6 +193,14 @@ function closeDD(){const l=document.getElementById('sellist');if(l)l.style.displ
 function setSel(key){const t=trips.find(x=>x.key===key);document.getElementById('selbtn').textContent=(t?label(t):'주행 선택')+' ▾';}
 function pickTrip(key){setSel(key);closeDD();selectTrip(key);}
 document.addEventListener('click',e=>{const dd=document.getElementById('seldd');if(dd&&!dd.contains(e.target))closeDD();});
+function refresh(){
+  if(live){
+    sb.from('control').update({poll_now:new Date().toISOString()}).eq('id',1).then(()=>{},()=>{});
+    const m=document.getElementById('msg');
+    if(m){m.style.color='#1a73e8';m.innerText='🔄 갱신 요청 보냄';setTimeout(()=>{if(m.innerText==='🔄 갱신 요청 보냄')m.innerText='';},3000);}
+  }
+  loadList(true);
+}
 async function loadList(keepSel){
   const {data,error}=await sb.from('drive_list').select('*').order('end_ts',{ascending:false}).limit(500);
   if(error){if(!live)alert('목록 읽기 실패: '+error.message);return;}

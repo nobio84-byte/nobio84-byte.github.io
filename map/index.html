@@ -53,7 +53,7 @@ body{margin:0;font-family:sans-serif}
 <input id="dfilter" type="date" onchange="onDateChange()">
 <div id="seldd"><button id="selbtn" onclick="toggleDD()">주행 선택 ▾</button><div id="sellist"></div></div>
 <button id="live" onclick="toggleLive()">LIVE</button>
-<button onclick="refresh()">↻</button>
+<button id="rfbtn" onclick="refresh()">↻</button>
 </div>
 <div id="map"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -196,8 +196,8 @@ document.addEventListener('click',e=>{const dd=document.getElementById('seldd');
 function refresh(){
   if(live){
     sb.from('control').update({poll_now:new Date().toISOString()}).eq('id',1).then(()=>{},()=>{});
-    const m=document.getElementById('msg');
-    if(m){m.style.color='#1a73e8';m.innerText='🔄 갱신 요청 보냄';setTimeout(()=>{if(m.innerText==='🔄 갱신 요청 보냄')m.innerText='';},3000);}
+    const b=document.getElementById('rfbtn');
+    if(b){const o=b.textContent;b.textContent='🔄';b.style.background='#1a73e8';b.style.color='#fff';setTimeout(()=>{b.textContent=o;b.style.background='#fff';b.style.color='#000';},1200);}
   }
   loadList(true);
 }

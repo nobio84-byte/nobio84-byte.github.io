@@ -328,7 +328,7 @@ async function loadList(keepSel){
   if(df){viewT=trips.filter(t=>new Date(t.start).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'})===df);}
   const list=document.getElementById('sellist');
   list.innerHTML='';
-  if(!viewT.length){document.getElementById('selbtn').textContent='(그 날짜 주행 없음) ▾';setFront('<div style="color:#1a73e8;font-weight:bold">'+monthStr+'</div><div onclick="editRate()" style="margin-top:5px;color:#5f6368;font-size:12px">⚡ 단가 '+WON_PER_KWH+'원/kWh 변경 ›</div>');document.getElementById('cur').style.display='none';return;}
+  if(!viewT.length){document.getElementById('selbtn').textContent='(그 날짜 주행 없음) ▾';setFront('<div style="color:#1a73e8;font-weight:bold">'+monthStr+'</div>');document.getElementById('cur').style.display='none';return;}
   let prevDay='';
   viewT.forEach(t=>{
     const day=new Date(t.start).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'});
@@ -402,8 +402,7 @@ function render(t,a){
   html+='<br>🚗 평균 '+avg+(mx>0?(' · 🏁 최고 '+mx):'')+'km/h';
   if(line2)html+='<br>'+line2;
   html+='<div id="place" style="margin-top:4px;color:#1a73e8">📍 …</div>';
-  html+='<div onclick="editRate()" style="margin-top:5px;color:#5f6368;font-size:12px">⚡ 단가 '+WON_PER_KWH+'원/kWh 변경 ›</div>';
-  html+='<div onclick="playRoute()" style="margin-top:3px;color:#1a73e8;font-size:12px;font-weight:bold">▶ 경로 재생</div>';
+  html+='<div onclick="playRoute()" style="margin-top:5px;color:#1a73e8;font-size:12px;font-weight:bold">▶ 경로 재생</div>';
   setFront(html);
   Promise.all([placeName(pts[0][0],pts[0][1]),placeName(pts[pts.length-1][0],pts[pts.length-1][1])]).then(([s,e])=>{
     const pl=document.getElementById('place');if(pl)pl.textContent='📍 '+s+' → '+e;});

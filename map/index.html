@@ -75,7 +75,7 @@ let WON_EXT=+localStorage.getItem('won_per_kwh_ext')||339;  // 외부(급속) �
 const API_LIMIT=4000;   // 이번 달 API 안전 한도 (무료 ~$10 ≈ 5000콜, 버퍼 두고 4000). 조정 가능
 const sb=supabase.createClient(SB_URL,SB_KEY);
 let map,layer,trips=[],curKey=null,live=false,liveTimer=null,geocache={},monthStr='',curData=[],replayMarker=null,replayTimer=null,replayRaf=null,arrowDeco=null,arrowTimer=null,arrowOffset=0;
-let statsFlipped=false,frontHTML='',chargeRows=null;
+let statsFlipped=false,frontHTML='',chargeRows=null,seasonRows=null;
 function kmh(mph){return (mph==null)?null:Math.round(mph*MI2KM);}
 function editRate(){
   const v=prompt('집 충전 단가 (원/kWh)\n실제 충전 요금으로 바꾸세요.',WON_PER_KWH);
@@ -117,8 +117,12 @@ function paintCharge(reload){
   const el=document.getElementById('stats');
   if(reload){
     el.innerHTML=flipBtn()+'<div style="color:#16a34a;font-weight:bold">🔌 충전</div><div style="font-size:12px;color:#5f6368;margin-top:3px">불러오는 중…</div>';
-    sb.from('charge_events').select('park_end,delta_pct,kwh,is_home').order('park_end',{ascending:false}).limit(200).then(({data,error})=>{
-      chargeRows=error?('ERR:'+error.message):(data||[]);
+    Promise.all([
+      sb.from('charge_events').select('park_end,delta_pct,kwh,is_home').order('park_end',{ascending:false}).limit(200),
+      sb.from('season_efficiency').select('*')
+    ]).then(([c,s])=>{
+      chargeRows=c.error?('ERR:'+c.error.message):(c.data||[]);
+      seasonRows=s.error?null:(s.data||[]);
       if(statsFlipped)el.innerHTML=flipBtn()+chargeHTML();
     });
     return;
@@ -128,9 +132,21 @@ function paintCharge(reload){
 function rateLine(){
   return '<div style="margin-top:6px;font-size:12px;color:#5f6368">⚡ <span onclick="editRate()" style="text-decoration:underline">집 '+WON_PER_KWH+'원</span> · <span onclick="editRateExt()" style="text-decoration:underline">외부 '+WON_EXT+'원</span> 변경 ›</div>';
 }
+function seasonHTML(){
+  const lab={winter:'겨울 &lt;5℃',spring_fall:'봄·가을 5–20℃',summer:'여름 &gt;20℃'};
+  const order=['winter','spring_fall','summer'];
+  const byS={};(seasonRows||[]).forEach(r=>{byS[r.season]=r;});
+  let rows='';
+  order.forEach(s=>{
+    const r=byS[s];
+    const val=r?(r.wh_per_km+' <span style="color:#9aa0a6;font-weight:normal">('+r.drives+')</span>'):'<span style="color:#9aa0a6">—</span>';
+    rows+='<tr><td style="padding:1px 8px 1px 0;white-space:nowrap">'+lab[s]+'</td><td style="text-align:right;font-weight:bold">'+val+'</td></tr>';
+  });
+  return '<div style="margin-top:7px;border-top:1px solid #e3e3e3;padding-top:5px"><div style="color:#16a34a;font-weight:bold;font-size:12px;margin-bottom:2px">🌡️ 계절 전비 (Wh/km · 낮을수록 좋음)</div><table style="font-size:12px;border-collapse:collapse">'+rows+'</table></div>';
+}
 function chargeHTML(){
   if(typeof chargeRows==='string'&&chargeRows.slice(0,4)==='ERR:'){
-    return '<div style="color:#16a34a;font-weight:bold;margin-bottom:2px">🔌 충전</div><div style="font-size:12px;color:#d93025">읽기 실패 — charge_events 권한 필요</div>'+rateLine();
+    return '<div style="color:#16a34a;font-weight:bold;margin-bottom:2px">🔌 충전</div><div style="font-size:12px;color:#d93025">읽기 실패 — charge_events 권한 필요</div>'+seasonHTML()+rateLine();
   }
   const rows=chargeRows||[];
   const ym=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'}).slice(0,7);
@@ -151,7 +167,7 @@ function chargeHTML(){
   }else{
     html+='<br><span style="color:#5f6368;font-size:12px">이번 달 충전 기록 없음</span>';
   }
-  return html+rateLine();
+  return html+seasonHTML()+rateLine();
 }
 function speedColor(v){
   if(v==null)return '#1a73e8';

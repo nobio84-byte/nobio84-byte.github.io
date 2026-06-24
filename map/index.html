@@ -111,10 +111,10 @@ function playRoute(){
   const total=pts.length;
   const durMs=Math.max(4000,Math.min(14000,total*350));
   replayMarker=L.circleMarker([pts[0].lat,pts[0].lng],{radius:8,color:'#fff',weight:2,fillColor:'#9333ea',fillOpacity:1}).addTo(map);
-  const t0=performance.now();
-  const step=(now)=>{
-    if(!replayMarker)return;
-    const prog=Math.min(1,(now-t0)/durMs);
+  const t0=Date.now();
+  replayTimer=setInterval(()=>{
+    if(!replayMarker){clearInterval(replayTimer);replayTimer=null;return;}
+    const prog=Math.min(1,Math.max(0,(Date.now()-t0)/durMs));
     const fpos=prog*(total-1);
     const i=Math.floor(fpos),f=fpos-i;
     const a=pts[i],b=pts[Math.min(total-1,i+1)];
@@ -123,15 +123,12 @@ function playRoute(){
     curEl.style.display='block';
     curEl.innerHTML='<div class="u">▶ 재생</div><div class="v">'+(v!=null?v:0)+' <span class="u">km/h</span></div><div class="g" style="color:'+gearColor(g)+'">'+g+'</div>';
     if(prog>=1){
+      clearInterval(replayTimer);replayTimer=null;
       if(replayMarker){map.removeLayer(replayMarker);replayMarker=null;}
-      replayRaf=null;
       const lp=pts[total-1],lv=kmh(lp.speed),lg=lp.shift_state||'-';
       curEl.innerHTML='<div class="u">'+(live?'🔴 현재':'🏁 마지막')+'</div><div class="v">'+(lv!=null?lv:0)+' <span class="u">km/h</span></div><div class="g" style="color:'+gearColor(lg)+'">'+lg+'</div>';
-      return;
     }
-    replayRaf=requestAnimationFrame(step);
-  };
-  replayRaf=requestAnimationFrame(step);
+  },33);
 }
 function openDate(){
   const f=document.getElementById('dfilter');

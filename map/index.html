@@ -22,6 +22,7 @@ body{margin:0;font-family:sans-serif;background:#fff}
 #login button{padding:12px 24px;border-radius:8px;border:none;background:#1a73e8;color:#fff;font-size:16px}
 #stats{position:fixed;top:10px;right:10px;z-index:900;background:rgba(255,255,255,.94);padding:8px 26px 8px 12px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.3);font-size:13px;line-height:1.5;display:none;max-width:72%;backface-visibility:hidden}
 #logout{position:fixed;top:10px;left:10px;z-index:1000;width:40px;height:40px;border:none;border-radius:8px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3);font-size:18px;cursor:pointer;display:none}
+#rtflash{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:1100;background:#16a34a;color:#fff;padding:7px 15px;border-radius:20px;font-size:13px;font-weight:bold;box-shadow:0 2px 8px rgba(0,0,0,.35);display:none}
 #cur{position:fixed;bottom:96px;left:10px;z-index:900;background:rgba(255,255,255,.95);padding:7px 12px;border-radius:10px;box-shadow:0 1px 5px rgba(0,0,0,.35);display:none;text-align:center;min-width:92px}
 #cur .u{font-size:11px;color:#666}
 #cur .v{font-size:23px;font-weight:bold;line-height:1.15}
@@ -51,6 +52,7 @@ body{margin:0;font-family:sans-serif;background:#fff}
 </div>
 <div id="stats"></div>
 <button id="logout" onclick="logout()" title="로그아웃">🚪</button>
+<div id="rtflash">🟢 실시간 수신</div>
 <div id="cur"></div>
 <div id="legend">느림 <b style="color:#e53935">●</b><b style="color:#fb8c00">●</b><b style="color:#fbc02d">●</b><b style="color:#7cb342">●</b><b style="color:#2e7d32">●</b> 빠름</div>
 <div id="bar">
@@ -74,7 +76,8 @@ let WON_PER_KWH=+localStorage.getItem('won_per_kwh')||314;  // 집 충전 단가
 let WON_EXT=+localStorage.getItem('won_per_kwh_ext')||339;  // 외부(급속) 충전 단가
 const API_LIMIT=4000;   // 이번 달 API 안전 한도 (무료 ~$10 ≈ 5000콜, 버퍼 두고 4000). 조정 가능
 const sb=supabase.createClient(SB_URL,SB_KEY);
-let map,layer,trips=[],curKey=null,live=false,liveTimer=null,geocache={},monthStr='',curData=[],replayMarker=null,replayTimer=null,replayRaf=null,arrowDeco=null,arrowTimer=null,arrowOffset=0;
+sb.auth.onAuthStateChange((_e,session)=>{if(session)sb.realtime.setAuth(session.access_token);});
+let map,layer,trips=[],curKey=null,live=false,liveTimer=null,geocache={},monthStr='',curData=[],replayMarker=null,replayTimer=null,replayRaf=null,arrowDeco=null,arrowTimer=null,arrowOffset=0,liveChannel=null,rtTimer=null;
 let statsFlipped=false,frontHTML='',chargeRows=null,seasonRows=null;
 function kmh(mph){return (mph==null)?null:Math.round(mph*MI2KM);}
 function editRate(){
@@ -250,8 +253,33 @@ async function logout(){
 function toggleLive(){
   live=!live;
   const b=document.getElementById('live');
-  if(live){document.getElementById('dfilter').value='';updateDateBtn();b.style.background='#e82127';b.style.color='#fff';b.textContent='● LIVE';loadList(false);liveTimer=setInterval(()=>loadList(false),5000);}
-  else{b.style.background='#fff';b.style.color='#000';b.textContent='LIVE';clearInterval(liveTimer);}
+  if(live){document.getElementById('dfilter').value='';updateDateBtn();b.style.background='#e82127';b.style.color='#fff';b.textContent='● LIVE';loadList(false);startLive();}
+  else{b.style.background='#fff';b.style.color='#000';b.textContent='LIVE';stopLive();}
+}
+function startLive(){
+  stopLive();
+  sb.auth.getSession().then(({data})=>{
+    if(data.session)sb.realtime.setAuth(data.session.access_token);
+    liveChannel=sb.channel('live-positions')
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'positions'},()=>{flashRT('🟢 실시간 수신');loadList(true);})
+      .subscribe((st)=>{
+        if(!live)return;
+        const lb=document.getElementById('live');
+        if(st==='SUBSCRIBED'){flashRT('🟢 실시간 연결됨');lb.textContent='● LIVE';}
+        else if(st==='CHANNEL_ERROR'||st==='TIMED_OUT'||st==='CLOSED'){lb.textContent='● LIVE?';}
+      });
+  });
+}
+function stopLive(){
+  if(liveChannel){sb.removeChannel(liveChannel);liveChannel=null;}
+}
+function flashRT(msg){
+  const el=document.getElementById('rtflash');
+  if(!el)return;
+  el.textContent=msg;
+  el.style.display='block';
+  if(rtTimer)clearTimeout(rtTimer);
+  rtTimer=setTimeout(()=>{el.style.display='none';},1400);
 }
 function label(t){
   const w=new Date(t.start);

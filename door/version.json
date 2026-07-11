@@ -1,0 +1,6 @@
+{
+  "versionCode": 2,
+  "versionName": "1.1",
+  "apkUrl": "https://nobio84-byte.github.io/door/app.apk",
+  "message": "인증 오류(401/403) 수정 및 자동 업데이트 추가"
+}

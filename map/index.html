@@ -426,7 +426,9 @@ function render(t,a){
     }
   }
   let html='<div style="color:#1a73e8;font-weight:bold;margin-bottom:2px">'+monthStr+'</div>';
-  html+='📏 '+km.toFixed(1)+'km · ⏱️ '+min+'분';
+  const _st=new Date(a[0].ts).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',hour12:false});
+  const _en=new Date(a[a.length-1].ts).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',hour12:false});
+  html+='📏 '+km.toFixed(1)+'km · ⏱️ '+_st+'~'+_en+' · '+min+'분';
   html+='<br>🚗 평균 '+avg+(mx>0?(' · 🏁 최고 '+mx):'')+'km/h';
   if(line2)html+='<br>'+line2;
   html+='<div id="place" style="margin-top:4px;color:#1a73e8">📍 …</div>';

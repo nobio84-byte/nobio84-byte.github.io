@@ -12,7 +12,6 @@
 <meta name="apple-mobile-web-app-title" content="DriveLog">
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20192%20192%22%3E%3Crect%20width%3D%22192%22%20height%3D%22192%22%20rx%3D%2240%22%20fill%3D%22%231a73e8%22%2F%3E%3Ctext%20x%3D%2296%22%20y%3D%22122%22%20font-size%3D%2274%22%20fill%3D%22%23ffffff%22%20text-anchor%3D%22middle%22%20font-family%3D%22sans-serif%22%3EDL%3C%2Ftext%3E%3C%2Fsvg%3E">
 <link rel="manifest" href='data:application/manifest+json,{"name":"DriveLog","short_name":"DriveLog","start_url":"./","display":"standalone","background_color":"%23111111","theme_color":"%231a73e8","icons":[{"src":"data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20192%20192%22%3E%3Crect%20width%3D%22192%22%20height%3D%22192%22%20rx%3D%2240%22%20fill%3D%22%231a73e8%22%2F%3E%3Ctext%20x%3D%2296%22%20y%3D%22122%22%20font-size%3D%2274%22%20fill%3D%22%23ffffff%22%20text-anchor%3D%22middle%22%20font-family%3D%22sans-serif%22%3EDL%3C%2Ftext%3E%3C%2Fsvg%3E","sizes":"192x192","type":"image/svg+xml"}]}'>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 html{color-scheme:only light}
 body{margin:0;font-family:sans-serif;background:#fff}
@@ -40,6 +39,10 @@ body{margin:0;font-family:sans-serif;background:#fff}
 #bar #sellist .dditem:active{background:#e8f0fe}
 #bar button{padding:10px 13px;border-radius:8px;border:none;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3);font-weight:bold}
 #msg{color:#f88;font-size:14px;min-height:18px}
+.kpopw{padding-bottom:12px}
+.kpop{position:relative;background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.35);padding:8px 28px 8px 12px;font-size:13px;line-height:1.45;white-space:nowrap;color:#222}
+.kpop:after{content:'';position:absolute;left:50%;bottom:-7px;margin-left:-7px;border-width:7px 7px 0;border-style:solid;border-color:#fff transparent transparent}
+.kpop .kx{position:absolute;top:4px;right:9px;color:#999;font-size:17px;line-height:1;cursor:pointer}
 </style>
 </head>
 <body>
@@ -63,8 +66,6 @@ body{margin:0;font-family:sans-serif;background:#fff}
 <button id="rfbtn" onclick="refresh()">↻</button>
 </div>
 <div id="map"></div>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const SB_URL="https://rzdjebtjlejjskvjrdec.supabase.co";
@@ -77,8 +78,102 @@ let WON_EXT=+localStorage.getItem('won_per_kwh_ext')||339;  // 외부(급속) �
 const API_LIMIT=4000;   // 이번 달 API 안전 한도 (무료 ~$10 ≈ 5000콜, 버퍼 두고 4000). 조정 가능
 const sb=supabase.createClient(SB_URL,SB_KEY);
 sb.auth.onAuthStateChange((_e,session)=>{if(session)sb.realtime.setAuth(session.access_token);});
-let map,layer,trips=[],curKey=null,live=false,liveTimer=null,geocache={},monthStr='',curData=[],replayMarker=null,replayTimer=null,replayRaf=null,arrowDeco=null,arrowTimer=null,arrowOffset=0,liveChannel=null,rtTimer=null;
+let map,layer=[],trips=[],curKey=null,live=false,liveTimer=null,geocache={},monthStr='',curData=[],replayMarker=null,replayTimer=null,replayRaf=null,arrowPath=null,arrowTimer=null,arrowOffset=0,liveChannel=null,rtTimer=null;
 let statsFlipped=false,frontHTML='',chargeRows=null,seasonRows=null;
+// ── 카카오 지도 (2026-09-25: Leaflet+OSM → 카카오) ──
+const KAKAO_KEY="2c5072ef7fd8851eb3ad52aa9f04a22f";  // 카카오 앱 'HA지도' JS키 — SDK 도메인에 https://nobio84-byte.github.io 등록 필요
+const PLACE_WAIT='📍 주소 확인 중…';
+let kakaoReady=null,geocoder=null,popupOv=null,hitPts=[],arrowPx=null,arrowPool=[],renderSeq=0;
+function loadKakao(){
+  if(kakaoReady)return kakaoReady;
+  kakaoReady=new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src='https://dapi.kakao.com/v2/maps/sdk.js?appkey='+KAKAO_KEY+'&libraries=services&autoload=false';
+    s.onload=()=>{try{kakao.maps.load(()=>res());}catch(e){rej(e);}};
+    s.onerror=()=>rej(new Error('sdk'));
+    document.head.appendChild(s);
+  });
+  return kakaoReady;
+}
+loadKakao().catch(()=>{});
+function LL(lat,lng){return new kakao.maps.LatLng(lat,lng);}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function rgba(hex,a){let h=hex.replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');return 'rgba('+parseInt(h.slice(0,2),16)+','+parseInt(h.slice(2,4),16)+','+parseInt(h.slice(4,6),16)+','+a+')';}
+// 화면 픽셀 크기 고정 점 (Leaflet circleMarker 대응: r=반지름, w=테두리 두께)
+function dotOv(lat,lng,r,w,stroke,fill,fop,z){
+  const s=2*r+w,el=document.createElement('div');
+  el.style.cssText='width:'+s+'px;height:'+s+'px;box-sizing:border-box;border-radius:50%;border:'+w+'px solid '+stroke+';background:'+rgba(fill,fop)+';pointer-events:none';
+  return new kakao.maps.CustomOverlay({position:LL(lat,lng),content:el,xAnchor:0.5,yAnchor:0.5,zIndex:z,clickable:false});
+}
+function addObj(o){o.setMap(map);layer.push(o);return o;}
+function clearLayer(){
+  layer.forEach(o=>o.setMap(null));layer=[];hitPts=[];closePopup();
+  arrowPath=null;arrowPx=null;arrowPool.forEach(o=>{if(o.on){o.ov.setMap(null);o.on=false;}});
+}
+// 팝업: 점 자체는 터치를 받지 않고(지도 끌기 방해 X), 지도를 탭한 위치에서 가까운 점을 찾아 띄움
+function showPopup(pos,html){
+  closePopup();
+  const w=document.createElement('div');w.className='kpopw';
+  w.innerHTML='<div class="kpop"><span class="kx">×</span>'+html+'</div>';
+  w.querySelector('.kx').addEventListener('click',e=>{e.stopPropagation();closePopup();});
+  popupOv=new kakao.maps.CustomOverlay({position:pos,content:w,xAnchor:0.5,yAnchor:1,zIndex:10,clickable:true});
+  popupOv.setMap(map);
+}
+function closePopup(){if(popupOv){popupOv.setMap(null);popupOv=null;}}
+function onMapTap(me){
+  if(!map||!me||!me.latLng||!hitPts.length){closePopup();return;}
+  const proj=map.getProjection(),c=proj.containerPointFromCoords(me.latLng);
+  let best=null,bs=1e9;
+  hitPts.forEach(h=>{
+    const p=proj.containerPointFromCoords(h.ll),d=Math.hypot(p.x-c.x,p.y-c.y);
+    if(d<=h.r){const sc=d-(h.pri?1000:0);if(sc<bs){bs=sc;best=h;}}
+  });
+  if(best)showPopup(best.ll,best.html);else closePopup();
+}
+// 흐르는 화살표 (Leaflet polylineDecorator 대응: 85px 간격, 70ms마다 3px 전진, 화면 안쪽만 그림)
+function arrowEl(){
+  const d=document.createElement('div');
+  d.style.cssText='width:22px;height:22px;pointer-events:none';
+  d.innerHTML='<svg width="22" height="22" viewBox="0 0 22 22" style="display:block"><path d="M11 11L1.5 5.5L1.5 16.5Z" fill="#e82127" stroke="#e82127" stroke-width="1" stroke-linejoin="round"/></svg>';
+  return d;
+}
+function arrowsBuild(){
+  const proj=map.getProjection();let c=0,q=null;arrowPx=[];
+  arrowPath.forEach(ll=>{const p=proj.containerPointFromCoords(ll);if(q)c+=Math.hypot(p.x-q.x,p.y-q.y);arrowPx.push({x:p.x,y:p.y,c:c});q=p;});
+}
+function arrowsDraw(){
+  if(!map)return;
+  let used=0;
+  if(arrowPath&&arrowPath.length>1){
+    if(arrowPx){ // 지도가 움직였으면(이동·확대·크기변경) 화면 좌표 다시 계산 — 이벤트 누락 대비
+      const pj=map.getProjection(),f0=pj.containerPointFromCoords(arrowPath[0]),fN=pj.containerPointFromCoords(arrowPath[arrowPath.length-1]),A0=arrowPx[0],AN=arrowPx[arrowPx.length-1];
+      if(Math.abs(f0.x-A0.x)>0.5||Math.abs(f0.y-A0.y)>0.5||Math.abs(fN.x-AN.x)>0.5||Math.abs(fN.y-AN.y)>0.5)arrowPx=null;
+    }
+    if(!arrowPx)arrowsBuild();
+    const P=arrowPx,tot=P[P.length-1].c,mel=document.getElementById('map'),W=mel.clientWidth,H=mel.clientHeight,M=16,proj=map.getProjection();
+    let k=1;
+    for(let d=arrowOffset;d<=tot;d+=85){
+      while(k<P.length-1&&P[k].c<d)k++;
+      const a=P[k-1],b=P[k],sl=b.c-a.c;if(sl<=0)continue;
+      const f=Math.min(1,Math.max(0,(d-a.c)/sl)),x=a.x+(b.x-a.x)*f,y=a.y+(b.y-a.y)*f;
+      if(x<-M||y<-M||x>W+M||y>H+M)continue;
+      let o=arrowPool[used];
+      if(!o){const e=arrowEl();o={el:e,on:false,ov:new kakao.maps.CustomOverlay({content:e,position:LL(0,0),xAnchor:0.5,yAnchor:0.5,zIndex:1,clickable:false})};arrowPool.push(o);}
+      o.ov.setPosition(proj.coordsFromContainerPoint(new kakao.maps.Point(x,y)));
+      o.el.style.transform='rotate('+(Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI)+'deg)';
+      if(!o.on){o.ov.setMap(map);o.on=true;}
+      used++;
+    }
+  }
+  for(let i=used;i<arrowPool.length;i++){const o=arrowPool[i];if(o.on){o.ov.setMap(null);o.on=false;}}
+}
+// 좌표 → 주소 (도로명+건물명 우선, 없으면 지번)
+function fmtAddr(r){
+  const ra=r.road_address,ja=r.address;
+  if(ra&&ra.address_name)return ra.address_name+(ra.building_name?' ('+ra.building_name+')':'');
+  if(ja&&ja.address_name)return ja.address_name;
+  return '?';
+}
 function kmh(mph){return (mph==null)?null:Math.round(mph*MI2KM);}
 function editRate(){
   const v=prompt('집 충전 단가 (원/kWh)\n실제 충전 요금으로 바꾸세요.',WON_PER_KWH);
@@ -184,11 +279,10 @@ function gearColor(g){return g==='D'?'#2e7d32':(g==='R'?'#e65100':(g==='P'?'#555
 function stopReplay(){
   if(replayTimer){clearInterval(replayTimer);replayTimer=null;}
   if(replayRaf){cancelAnimationFrame(replayRaf);replayRaf=null;}
-  if(replayMarker){map.removeLayer(replayMarker);replayMarker=null;}
+  if(replayMarker){replayMarker.setMap(null);replayMarker=null;}
 }
 function stopArrows(){if(arrowTimer){clearInterval(arrowTimer);arrowTimer=null;}}
-function startArrows(){if(!arrowDeco||arrowTimer||document.hidden)return;arrowTimer=setInterval(()=>{arrowOffset=(arrowOffset+3)%85;arrowDeco.setPatterns([{offset:arrowOffset,repeat:85,symbol:arrowSym()}]);},70);}
-function arrowSym(){return L.Symbol.arrowHead({pixelSize:11,polygon:true,pathOptions:{fill:true,fillColor:'#e82127',fillOpacity:1,color:'#e82127',weight:1}});}
+function startArrows(){if(!arrowPath||arrowTimer||document.hidden)return;arrowTimer=setInterval(()=>{arrowOffset=(arrowOffset+3)%85;arrowsDraw();},70);}
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stopArrows();else startArrows();});
 function playRoute(){
   stopReplay();
@@ -197,7 +291,7 @@ function playRoute(){
   const curEl=document.getElementById('cur');
   const total=pts.length;
   const durMs=Math.max(4000,Math.min(14000,total*350));
-  replayMarker=L.circleMarker([pts[0].lat,pts[0].lng],{radius:8,color:'#fff',weight:2,fillColor:'#9333ea',fillOpacity:1}).addTo(map);
+  replayMarker=dotOv(pts[0].lat,pts[0].lng,8,2,'#fff','#9333ea',1,4);replayMarker.setMap(map);
   const t0=Date.now();
   replayTimer=setInterval(()=>{
     if(!replayMarker){clearInterval(replayTimer);replayTimer=null;return;}
@@ -205,13 +299,13 @@ function playRoute(){
     const fpos=prog*(total-1);
     const i=Math.floor(fpos),f=fpos-i;
     const a=pts[i],b=pts[Math.min(total-1,i+1)];
-    replayMarker.setLatLng([a.lat+(b.lat-a.lat)*f,a.lng+(b.lng-a.lng)*f]);
+    replayMarker.setPosition(LL(a.lat+(b.lat-a.lat)*f,a.lng+(b.lng-a.lng)*f));
     const v=kmh(a.speed),g=a.shift_state||'-';
     curEl.style.display='block';
     curEl.innerHTML='<div class="u">▶ 재생</div><div class="v">'+(v!=null?v:0)+' <span class="u">km/h</span></div><div class="g" style="color:'+gearColor(g)+'">'+g+'</div>';
     if(prog>=1){
       clearInterval(replayTimer);replayTimer=null;
-      if(replayMarker){map.removeLayer(replayMarker);replayMarker=null;}
+      if(replayMarker){replayMarker.setMap(null);replayMarker=null;}
       const lp=pts[total-1],lv=kmh(lp.speed),lg=lp.shift_state||'-';
       curEl.innerHTML='<div class="u">'+(live?'🔴 현재':'🏁 마지막')+'</div><div class="v">'+(lv!=null?lv:0)+' <span class="u">km/h</span></div><div class="g" style="color:'+gearColor(lg)+'">'+lg+'</div>';
     }
@@ -242,9 +336,18 @@ function start(){
   document.getElementById('stats').style.display='block';
   document.getElementById('legend').style.display='block';
   document.getElementById('logout').style.display='block';
-  if(!map){map=L.map('map',{zoomControl:false}).setView([37.32,127.1],12);
-    L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap, HOT'}).addTo(map);}
-  loadList(false);
+  loadKakao().then(()=>{
+    if(!map){
+      map=new kakao.maps.Map(document.getElementById('map'),{center:LL(37.32,127.1),level:7});
+      try{geocoder=new kakao.maps.services.Geocoder();}catch(e){geocoder=null;}
+      kakao.maps.event.addListener(map,'click',onMapTap);
+      kakao.maps.event.addListener(map,'bounds_changed',()=>{arrowPx=null;});
+      window.addEventListener('resize',()=>{try{map.relayout();arrowPx=null;}catch(e){}});
+    }
+    loadList(false);
+  }).catch(()=>{
+    setFront('<div style="color:#d93025;font-weight:bold">카카오 지도를 불러오지 못했습니다</div><div style="font-size:12px;color:#5f6368;margin-top:3px">카카오 개발자 콘솔 → 앱 HA지도 → JavaScript 키 → SDK 도메인에<br>https://nobio84-byte.github.io 가 있는지 확인</div>');
+  });
 }
 async function logout(){
   try{ await sb.auth.signOut(); }catch(e){}
@@ -304,15 +407,20 @@ function dist(a,b){
   const s=Math.sin(dLat/2)**2+Math.cos(r(a[0]))*Math.cos(r(b[0]))*Math.sin(dLng/2)**2;
   return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
 }
-async function placeName(lat,lng){
+function placeName(lat,lng){
   const key=lat.toFixed(4)+','+lng.toFixed(4);
-  if(geocache[key])return geocache[key];
-  try{
-    const r=await fetch('https://nominatim.openstreetmap.org/reverse?format=json&zoom=16&accept-language=ko&lat='+lat+'&lon='+lng);
-    const j=await r.json();const a=j.address||{};
-    const n=a.suburb||a.neighbourhood||a.quarter||a.borough||a.city_district||a.town||a.village||a.road||a.city||'?';
-    geocache[key]=n;return n;
-  }catch(e){return '?';}
+  if(geocache[key])return Promise.resolve(geocache[key]);
+  if(!geocoder)return Promise.resolve('?');
+  return new Promise(res=>{
+    const to=setTimeout(()=>res('?'),8000);
+    try{
+      geocoder.coord2Address(lng,lat,(r,st)=>{
+        clearTimeout(to);
+        if(st===kakao.maps.services.Status.OK&&r&&r[0]){const n=fmtAddr(r[0]);if(n!=='?')geocache[key]=n;res(n);}
+        else res('?');
+      });
+    }catch(e){clearTimeout(to);res('?');}
+  });
 }
 function toggleDD(){const l=document.getElementById('sellist');l.style.display=(l.style.display==='block')?'none':'block';}
 function closeDD(){const l=document.getElementById('sellist');if(l)l.style.display='none';}
@@ -375,31 +483,39 @@ async function selectTrip(key){
   render(t,data||[]);
 }
 function render(t,a){
-  if(layer)map.removeLayer(layer);
-  layer=L.layerGroup().addTo(map);
+  if(!map)return;
+  clearLayer();
   stopReplay();stopArrows();
   a=a.filter(p=>p.lat&&p.lng);
   curData=a;
   const pts=a.map(p=>[p.lat,p.lng]);
   if(!pts.length)return;
+  const lls=pts.map(p=>LL(p[0],p[1]));
+  // 속도색 선: 같은 색이 이어지는 구간을 한 줄로 묶음(구간별 색은 기존과 동일)
+  const addLine=(path,col)=>{
+    const pl=addObj(new kakao.maps.Polyline({path:path,strokeWeight:5,strokeColor:col,strokeOpacity:1,strokeStyle:'solid'}));
+    kakao.maps.event.addListener(pl,'click',onMapTap);
+  };
+  let run=[lls[0]],col=null;
   for(let i=1;i<a.length;i++){
-    const v=kmh(a[i].speed);
-    L.polyline([pts[i-1],pts[i]],{color:speedColor(v),weight:5}).addTo(layer);
+    const c=speedColor(kmh(a[i].speed));
+    if(col!==null&&c!==col){addLine(run,col);run=[lls[i-1]];}
+    col=c;run.push(lls[i]);
   }
-  const host=L.polyline(pts,{opacity:0}).addTo(layer);
-  if(L.polylineDecorator){
-    arrowOffset=0;
-    arrowDeco=L.polylineDecorator(host,{patterns:[{offset:0,repeat:85,symbol:arrowSym()}]}).addTo(layer);
-    startArrows();
-  }
-  a.forEach(p=>{
+  if(run.length>1)addLine(run,col);
+  arrowPath=lls;arrowOffset=0;arrowPx=null;
+  arrowsDraw();startArrows();
+  a.forEach((p,i)=>{
     const tm=new Date(p.ts).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false});
     const v=kmh(p.speed);
     const sh=p.shift_state?(' · '+p.shift_state):'';
-    L.circleMarker([p.lat,p.lng],{radius:4,color:'#555',weight:1}).bindPopup(tm+(v!=null?'<br>'+v+'km/h':'')+sh).addTo(layer);
+    addObj(dotOv(p.lat,p.lng,4,1,'#555','#555',0.2,2));
+    hitPts.push({ll:lls[i],r:16,html:tm+(v!=null?'<br>'+v+'km/h':'')+sh});
   });
-  L.circleMarker(pts[0],{radius:9,color:'#1a7f37',fillColor:'#2ea043',fillOpacity:1}).bindPopup('🟢 출발').addTo(layer);
-  L.circleMarker(pts[pts.length-1],{radius:9,color:'#7a0d11',fillColor:'#e82127',fillOpacity:1}).bindPopup('🔴 도착').addTo(layer);
+  addObj(dotOv(pts[0][0],pts[0][1],9,3,'#1a7f37','#2ea043',1,3));
+  addObj(dotOv(pts[pts.length-1][0],pts[pts.length-1][1],9,3,'#7a0d11','#e82127',1,3));
+  hitPts.push({ll:lls[0],r:20,pri:1,html:'🟢 출발'});
+  hitPts.push({ll:lls[lls.length-1],r:20,pri:1,html:'🔴 도착'});
   let km;
   const o0=a[0].odometer,oN=a[a.length-1].odometer;
   if(o0!=null&&oN!=null&&oN>=o0){km=(oN-o0)*MI2KM;}
@@ -431,12 +547,19 @@ function render(t,a){
   html+='📏 '+km.toFixed(1)+'km · ⏱️ '+_st+'~'+_en+' · '+min+'분';
   html+='<br>🚗 평균 '+avg+(mx>0?(' · 🏁 최고 '+mx):'')+'km/h';
   if(line2)html+='<br>'+line2;
-  html+='<div id="place" style="margin-top:4px;color:#1a73e8">📍 …</div>';
+  html+='<div id="place" style="margin-top:4px;color:#1a73e8;font-size:12px;line-height:1.45">'+PLACE_WAIT+'</div>';
   html+='<div onclick="playRoute()" style="margin-top:5px;color:#1a73e8;font-size:12px;font-weight:bold">▶ 경로 재생</div>';
   setFront(html);
+  const seq=++renderSeq;
   Promise.all([placeName(pts[0][0],pts[0][1]),placeName(pts[pts.length-1][0],pts[pts.length-1][1])]).then(([s,e])=>{
-    const pl=document.getElementById('place');if(pl)pl.textContent='📍 '+s+' → '+e;});
-  if(!live)map.fitBounds(pts);
+    if(seq!==renderSeq)return;
+    const ph='🟢 '+esc(s)+'<br>🔴 '+esc(e);
+    frontHTML=frontHTML.replace(PLACE_WAIT,ph);
+    const pl=document.getElementById('place');if(pl)pl.innerHTML=ph;});
+  if(!live){
+    if(lls.length===1)map.setCenter(lls[0]);
+    else{const bd=new kakao.maps.LatLngBounds();lls.forEach(x=>bd.extend(x));map.setBounds(bd);}
+  }
 }
 sb.auth.getSession().then(({data})=>{if(data.session)start();});
 </script>
